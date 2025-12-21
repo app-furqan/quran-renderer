@@ -138,11 +138,16 @@ hb_skia_paint_color (hb_paint_funcs_t *pfuncs HB_UNUSED,
                       void *user_data HB_UNUSED)
 {
     skia_context_t *c = (skia_context_t *) paint_data;
+    
+    // If use_foreground is true, use the foreground color stored in context
+    // Otherwise use the color provided by the font (e.g., COLR table)
+    hb_color_t final_color = use_foreground ? c->foreground : color;
+    
     c->paint->setColor(SkColorSetARGB(
-        hb_color_get_alpha(color), 
-        hb_color_get_red(color), 
-        hb_color_get_green(color), 
-        hb_color_get_blue(color)
+        hb_color_get_alpha(final_color), 
+        hb_color_get_red(final_color), 
+        hb_color_get_green(final_color), 
+        hb_color_get_blue(final_color)
     ));
     c->canvas->drawPath(c->path, *c->paint);
 }

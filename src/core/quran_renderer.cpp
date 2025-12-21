@@ -350,6 +350,7 @@ struct QuranRendererImpl {
         skia_context_t context{};
         context.canvas = canvas.get();
         context.paint = &paint;
+        context.foreground = textColor;  // Set foreground for COLR use_foreground callback
         
         auto& pageText = pages[pageIndex];
         
