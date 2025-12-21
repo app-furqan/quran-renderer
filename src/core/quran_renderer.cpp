@@ -77,7 +77,6 @@ struct QuranRendererImpl {
     std::unordered_map<int, float> lineWidths;
     
     bool tajweed = true;
-    unsigned int tajweedcolorindex = 0xFFFF;
     hb_feature_t features[1];
     int coords[2];
     
@@ -140,16 +139,8 @@ struct QuranRendererImpl {
         draw_funcs = hb_skia_draw_get_funcs();
         paint_funcs = hb_skia_paint_get_funcs();
         
-        // Get tajweed color index from GPOS lookup table
-        // For DigitalKhatt/Madina fonts, tajweed lookups start around index 150-160
-        // We use the lookup count to determine if this font has tajweed support
-        unsigned int gpos_lookup_count = hb_ot_layout_table_get_lookup_count(face, HB_OT_TAG_GPOS);
-        if (gpos_lookup_count > 150) {
-            // Font likely has tajweed support, use index 152 as default
-            // This corresponds to the 'green' color lookup in DigitalKhatt fonts
-            tajweedcolorindex = 152;
-        }
-        // If lookup count is less, keep default 0xFFFF (disabled)
+        // Tajweed colors are embedded in the font's COLR/CPAL tables
+        // HarfBuzz will automatically render them when palette_index is set
         
         return true;
     }
@@ -288,16 +279,12 @@ struct QuranRendererImpl {
             
             canvas->translate(glyph_pos[i].x_offset, glyph_pos[i].y_offset);
             
-            auto color = HB_COLOR(0, 0, 0, 255);
-            if (tajweed && glyph_pos[i].lookup_index >= tajweedcolorindex) {
-                color = HB_COLOR(
-                    (glyph_pos[i].base_codepoint >> 8) & 0xff,
-                    (glyph_pos[i].base_codepoint >> 16) & 0xff,
-                    (glyph_pos[i].base_codepoint >> 24) & 0xff,
-                    255
-                );
-            }
-            hb_font_paint_glyph(font, glyph_index, paint_funcs, context, 0, color);
+            // HarfBuzz automatically handles COLR/CPAL tables for colored glyphs
+            // We pass black as foreground color, and HarfBuzz will use COLR colors if available
+            // The palette_index parameter (0) selects which color palette to use from CPAL
+            auto foreground_color = HB_COLOR(0, 0, 0, 255);
+            unsigned int palette_index = tajweed ? 0 : 0xFFFF; // Use palette 0 for colors, 0xFFFF to disable
+            hb_font_paint_glyph(font, glyph_index, paint_funcs, context, palette_index, foreground_color);
             
             canvas->translate(-glyph_pos[i].x_offset, -glyph_pos[i].y_offset);
             
