@@ -49,6 +49,7 @@ typedef struct {
     bool tajweed;       // Enable tajweed coloring
     bool justify;       // Enable line justification
     float fontScale;    // Font scale factor (1.0 = default, 0.8-1.2 recommended)
+    uint32_t backgroundColor; // Background color in RGBA format (0xRRGGBBAA, default: 0xFFFFFFFF for white)
 } QuranRenderConfig;
 
 /**

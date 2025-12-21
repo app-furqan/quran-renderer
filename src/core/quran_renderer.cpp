@@ -77,6 +77,7 @@ struct QuranRendererImpl {
     std::unordered_map<int, float> lineWidths;
     
     bool tajweed = true;
+    unsigned int tajweedcolorindex = 0xFFFF;
     hb_feature_t features[1];
     int coords[2];
     
@@ -139,8 +140,16 @@ struct QuranRendererImpl {
         draw_funcs = hb_skia_draw_get_funcs();
         paint_funcs = hb_skia_paint_get_funcs();
         
-        // Tajweed colors are embedded in the font's COLR/CPAL tables
-        // HarfBuzz will automatically render them when palette_index is set
+        // Tajweed color detection:
+        // Check if font has tajweed color support via GPOS lookup count
+        // Fonts with >150 GPOS lookups likely have tajweed-specific lookups starting around index 152
+        // Note: DigitalKhattV2 only has 140 lookups and uses external regex-based tajweed coloring
+        unsigned int gpos_lookup_count = hb_ot_layout_table_get_lookup_count(face, HB_OT_TAG_GPOS);
+        if (gpos_lookup_count > 150) {
+            // Font has embedded tajweed support
+            tajweedcolorindex = 152;
+        }
+        // Otherwise keep default 0xFFFF (disabled, will fall back to base_codepoint check)
         
         return true;
     }
@@ -279,12 +288,32 @@ struct QuranRendererImpl {
             
             canvas->translate(glyph_pos[i].x_offset, glyph_pos[i].y_offset);
             
-            // HarfBuzz automatically handles COLR/CPAL tables for colored glyphs
-            // We pass black as foreground color, and HarfBuzz will use COLR colors if available
-            // The palette_index parameter (0) selects which color palette to use from CPAL
-            auto foreground_color = HB_COLOR(0, 0, 0, 255);
-            unsigned int palette_index = tajweed ? 0 : 0xFFFF; // Use palette 0 for colors, 0xFFFF to disable
-            hb_font_paint_glyph(font, glyph_index, paint_funcs, context, palette_index, foreground_color);
+            // Tajweed color handling:
+            // DigitalKhatt fonts can encode tajweed colors in two ways:
+            // 1. Embedded in base_codepoint during GPOS processing (older fonts)
+            // 2. External application-level logic via regex analysis (DigitalKhattV2 and web implementation)
+            //
+            // This implementation handles method #1. For DigitalKhattV2, tajweed colors
+            // are determined by JavaScript regex in tajweed.service.ts on the web, not embedded in the font.
+            // The color categories are: green (idgham/ikhfa), tafkim (dark blue), lgray (silent letters),
+            // lkalkala (light blue), red1-4 (various madd counts).
+            //
+            // If using DigitalKhattV2 and need tajweed colors, implement the regex patterns from:
+            // https://github.com/DigitalKhatt/digitalkhatt.org/blob/master/ClientApp/src/app/services/tajweed.service.ts
+            
+            auto color = HB_COLOR(0, 0, 0, 255); // Default black
+            if (tajweed && glyph_pos[i].base_codepoint != 0) {
+                // Check if base_codepoint contains color data (non-zero RGB values)
+                uint8_t r = (glyph_pos[i].base_codepoint >> 8) & 0xff;
+                uint8_t g = (glyph_pos[i].base_codepoint >> 16) & 0xff;
+                uint8_t b = (glyph_pos[i].base_codepoint >> 24) & 0xff;
+                
+                // Only apply color if at least one channel is non-zero
+                if (r != 0 || g != 0 || b != 0) {
+                    color = HB_COLOR(r, g, b, 255);
+                }
+            }
+            hb_font_paint_glyph(font, glyph_index, paint_funcs, context, 0, color);
             
             canvas->translate(-glyph_pos[i].x_offset, -glyph_pos[i].y_offset);
             
@@ -297,11 +326,16 @@ struct QuranRendererImpl {
         hb_buffer_destroy(buffer);
     }
     
-    void drawPage(void* pixels, int width, int height, int stride, int pageIndex, bool justify, float fontScale = 1.0f) {
+    void drawPage(void* pixels, int width, int height, int stride, int pageIndex, bool justify, float fontScale = 1.0f, uint32_t backgroundColor = 0xFFFFFFFF) {
         SkImageInfo imageInfo = SkImageInfo::Make(width, height, kRGBA_8888_SkColorType, kPremul_SkAlphaType); // was Make(width, height, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
         auto canvas = SkCanvas::MakeRasterDirect(imageInfo, pixels, stride);
         
-        canvas->drawColor(SK_ColorWHITE);
+        // Extract RGBA components from backgroundColor (0xRRGGBBAA format)
+        uint8_t r = (backgroundColor >> 24) & 0xFF;
+        uint8_t g = (backgroundColor >> 16) & 0xFF;
+        uint8_t b = (backgroundColor >> 8) & 0xFF;
+        uint8_t a = backgroundColor & 0xFF;
+        canvas->drawColor(SkColorSetARGB(a, r, g, b));
         
         SkPaint paint;
         paint.setColor(SK_ColorBLACK);
@@ -406,7 +440,8 @@ void quran_renderer_draw_page(
         buffer->stride,
         pageIndex,
         config ? config->justify : true,
-        config ? config->fontScale : 1.0f
+        config ? config->fontScale : 1.0f,
+        config ? config->backgroundColor : 0xFFFFFFFF
     );
 }
 
