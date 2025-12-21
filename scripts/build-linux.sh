@@ -234,6 +234,13 @@ build_skia() {
         skia_enable_pdf=false
         skia_use_gl=false
         skia_use_vulkan=false
+        skia_use_system_freetype2=false
+        skia_use_freetype=true
+        skia_use_fontconfig=false
+        skia_use_dng_sdk=false
+        skia_use_piex=false
+        skia_use_libjpeg_turbo_decode=false
+        skia_use_libjpeg_turbo_encode=false
         extra_cflags_cc=["-frtti"]
     '
     
@@ -308,7 +315,7 @@ build_library() {
         -DCMAKE_BUILD_TYPE=Release \
         -DBUILD_SHARED_LIBS=ON \
         -DHARFBUZZ_INCLUDE_DIR="$DEPS_DIR/harfbuzz/src" \
-        -DHARFBUZZ_LIBRARY_DIR="$DEPS_DIR/harfbuzz-build-linux/src" \
+        -DHARFBUZZ_LIBRARY_DIR="$DEPS_DIR/harfbuzz-build-linux" \
         -DSKIA_INCLUDE_DIR="$DEPS_DIR/skia" \
         -DSKIA_LIBRARY_DIR="$DEPS_DIR/skia/out/linux-release" \
         -DQURAN_TEXT_DIR="$DEPS_DIR/visualmetafont/src/qurantext"

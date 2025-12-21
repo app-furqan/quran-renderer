@@ -95,6 +95,12 @@ add_library(skia STATIC IMPORTED)
 set_target_properties(skia PROPERTIES 
     IMPORTED_LOCATION "${SKIA_DIR}/${ANDROID_ABI}/libskia.a"
 )
+
+# Verify Skia static library exists
+if(NOT EXISTS "${SKIA_DIR}/${ANDROID_ABI}/libskia.a")
+    message(FATAL_ERROR "Skia static library not found at: ${SKIA_DIR}/${ANDROID_ABI}/libskia.a")
+endif()
+
 # Include paths: include_root for Skia internal headers, include/core for direct SkXxx.h includes
 target_include_directories(skia INTERFACE 
     ${SKIA_DIR}/include_root
@@ -102,10 +108,17 @@ target_include_directories(skia INTERFACE
     ${SKIA_DIR}/include_root/include/config
 )
 
+message(STATUS "Android ${ANDROID_ABI}: Linking Skia statically from ${SKIA_DIR}/${ANDROID_ABI}/libskia.a")
+
 # Compiler definitions
 target_compile_definitions(quranrenderer PUBLIC 
     HB_NO_PRAGMA_GCC_DIAGNOSTIC_ERROR
 )
+
+message(STATUS "Android ${ANDROID_ABI}: Building quranrenderer with:")
+message(STATUS "  - HarfBuzz sources from: ${HARFBUZZ_DIR}/src")
+message(STATUS "  - Skia static library: ${SKIA_DIR}/${ANDROID_ABI}/libskia.a")
+message(STATUS "  - Quran text data: ${VMF_DIR}/src/qurantext")
 
 # Include directories
 target_include_directories(quranrenderer PRIVATE

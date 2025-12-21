@@ -40,26 +40,27 @@ target_include_directories(quran_renderer
         ${QURAN_TEXT_DIR}
 )
 
-# HarfBuzz dependency (link statically to include custom justify functions)
+# HarfBuzz dependency (MUST link statically to include custom justify functions)
 if(HARFBUZZ_INCLUDE_DIR AND HARFBUZZ_LIBRARY_DIR)
     target_include_directories(quran_renderer PRIVATE
         ${HARFBUZZ_INCLUDE_DIR}
         ${HARFBUZZ_INCLUDE_DIR}/src
     )
     
-    # Use static library if available, otherwise shared
-    if(EXISTS "${HARFBUZZ_LIBRARY_DIR}/libharfbuzz.a")
-        target_link_libraries(quran_renderer PRIVATE "${HARFBUZZ_LIBRARY_DIR}/libharfbuzz.a")
+    # Use static library - REQUIRED for custom HarfBuzz with hb_buffer_set_justify
+    set(HARFBUZZ_STATIC_LIB "${HARFBUZZ_LIBRARY_DIR}/libharfbuzz.a")
+    if(EXISTS "${HARFBUZZ_STATIC_LIB}")
+        target_link_libraries(quran_renderer PRIVATE "${HARFBUZZ_STATIC_LIB}")
+        message(STATUS "Linking HarfBuzz statically: ${HARFBUZZ_STATIC_LIB}")
     else()
-        target_link_directories(quran_renderer PRIVATE ${HARFBUZZ_LIBRARY_DIR})
-        target_link_libraries(quran_renderer PRIVATE harfbuzz)
+        message(FATAL_ERROR "Static HarfBuzz library not found at: ${HARFBUZZ_STATIC_LIB}\n"
+                           "Custom HarfBuzz with justification support is required.")
     endif()
 else()
-    find_package(harfbuzz REQUIRED)
-    target_link_libraries(quran_renderer PRIVATE harfbuzz::harfbuzz)
+    message(FATAL_ERROR "HARFBUZZ_INCLUDE_DIR and HARFBUZZ_LIBRARY_DIR must be set to custom HarfBuzz build")
 endif()
 
-# Skia dependency (link statically)
+# Skia dependency (MUST link statically)
 if(SKIA_INCLUDE_DIR AND SKIA_LIBRARY_DIR)
     target_include_directories(quran_renderer PRIVATE 
         ${SKIA_INCLUDE_DIR}
@@ -71,16 +72,16 @@ if(SKIA_INCLUDE_DIR AND SKIA_LIBRARY_DIR)
         ${SKIA_INCLUDE_DIR}/src/base
     )
     
-    # Use static library if available
-    if(EXISTS "${SKIA_LIBRARY_DIR}/libskia.a")
-        target_link_libraries(quran_renderer PRIVATE "${SKIA_LIBRARY_DIR}/libskia.a")
+    # Use static library - REQUIRED for self-contained build
+    set(SKIA_STATIC_LIB "${SKIA_LIBRARY_DIR}/libskia.a")
+    if(EXISTS "${SKIA_STATIC_LIB}")
+        target_link_libraries(quran_renderer PRIVATE "${SKIA_STATIC_LIB}")
+        message(STATUS "Linking Skia statically: ${SKIA_STATIC_LIB}")
     else()
-        target_link_directories(quran_renderer PRIVATE ${SKIA_LIBRARY_DIR})
-        target_link_libraries(quran_renderer PRIVATE skia)
+        message(FATAL_ERROR "Static Skia library not found at: ${SKIA_STATIC_LIB}")
     endif()
 else()
-    find_package(skia REQUIRED)
-    target_link_libraries(quran_renderer PRIVATE skia::skia)
+    message(FATAL_ERROR "SKIA_INCLUDE_DIR and SKIA_LIBRARY_DIR must be set")
 endif()
 
 # Additional libraries that Skia may need
