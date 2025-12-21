@@ -81,20 +81,58 @@ check_requirements() {
     log_success "All requirements satisfied"
 }
 
-# Clone or update repository
+# Check if repo has updates available, returns 0 if updates available
+check_for_updates() {
+    local repo_dir="$1"
+    local branch="${2:-HEAD}"
+    
+    if [[ ! -d "$repo_dir/.git" ]]; then
+        return 0  # Not cloned yet, needs update
+    fi
+    
+    cd "$repo_dir"
+    git fetch origin --quiet 2>/dev/null || return 0
+    
+    local LOCAL=$(git rev-parse HEAD 2>/dev/null)
+    local REMOTE=$(git rev-parse origin/$branch 2>/dev/null || git rev-parse FETCH_HEAD 2>/dev/null)
+    
+    if [[ "$LOCAL" != "$REMOTE" ]]; then
+        return 0  # Updates available
+    fi
+    return 1  # Up to date
+}
+
+# Clone or update repository, returns 0 if updated, 1 if no changes
 clone_or_update() {
     local repo_url="$1"
     local target_dir="$2"
     local branch="${3:-}"
     
     if [[ -d "$target_dir/.git" ]]; then
-        log_info "Updating $(basename "$target_dir")..."
         cd "$target_dir"
-        git fetch origin
+        git fetch origin --quiet
+        
+        local LOCAL=$(git rev-parse HEAD)
+        local REMOTE
+        if [[ -n "$branch" ]]; then
+            REMOTE=$(git rev-parse origin/$branch 2>/dev/null)
+        else
+            REMOTE=$(git rev-parse FETCH_HEAD 2>/dev/null)
+        fi
+        
+        if [[ "$LOCAL" == "$REMOTE" ]]; then
+            log_success "$(basename "$target_dir") is up to date"
+            return 1  # No changes
+        fi
+        
+        log_info "Updating $(basename "$target_dir")..."
         if [[ -n "$branch" ]]; then
             git checkout "$branch"
-            git pull origin "$branch" || true
+            git pull origin "$branch"
+        else
+            git pull
         fi
+        return 0  # Updated
     else
         log_info "Cloning $(basename "$target_dir")..."
         if [[ -n "$branch" ]]; then
@@ -102,17 +140,26 @@ clone_or_update() {
         else
             git clone "$repo_url" "$target_dir"
         fi
+        return 0  # Newly cloned
     fi
 }
 
 # Build HarfBuzz for Linux
 build_harfbuzz() {
-    log_info "Building HarfBuzz for Linux..."
-    
     local HB_DIR="$DEPS_DIR/harfbuzz"
     local HB_BUILD="$DEPS_DIR/harfbuzz-build-linux"
+    local HB_LIB="$HB_BUILD/libharfbuzz.a"
     
-    clone_or_update "https://github.com/DigitalKhatt/harfbuzz.git" "$HB_DIR" "justification"
+    # Check for updates
+    if ! clone_or_update "https://github.com/DigitalKhatt/harfbuzz.git" "$HB_DIR" "justification"; then
+        # No updates, check if already built
+        if [[ -f "$HB_LIB" ]]; then
+            log_success "HarfBuzz already built (cached, up to date)"
+            return 0
+        fi
+    fi
+    
+    log_info "Building HarfBuzz for Linux..."
     
     mkdir -p "$HB_BUILD"
     cd "$HB_BUILD"
@@ -120,6 +167,7 @@ build_harfbuzz() {
     cmake "$HB_DIR" \
         -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
         -DBUILD_SHARED_LIBS=OFF \
         -DHB_HAVE_FREETYPE=OFF \
         -DHB_HAVE_GLIB=OFF \
@@ -134,61 +182,89 @@ build_harfbuzz() {
 
 # Build Skia for Linux
 build_skia() {
-    log_info "Building Skia for Linux..."
-    
     local SKIA_DIR="$DEPS_DIR/skia"
+    local SKIA_LIB="$SKIA_DIR/out/linux-release/libskia.a"
+    local NEEDS_BUILD=false
     
-    if [[ ! -d "$SKIA_DIR" ]]; then
+    # Check if Skia repo exists and for updates
+    if [[ -d "$SKIA_DIR/.git" ]]; then
+        cd "$SKIA_DIR"
+        git fetch origin --quiet
+        local LOCAL=$(git rev-parse HEAD)
+        local REMOTE=$(git rev-parse origin/main 2>/dev/null || git rev-parse FETCH_HEAD)
+        
+        if [[ "$LOCAL" != "$REMOTE" ]]; then
+            log_info "Skia has updates available, pulling..."
+            git pull origin main
+            NEEDS_BUILD=true
+        elif [[ -f "$SKIA_LIB" ]]; then
+            log_success "Skia already built (cached, up to date)"
+            return 0
+        else
+            NEEDS_BUILD=true
+        fi
+    else
         log_info "Cloning Skia..."
         git clone https://skia.googlesource.com/skia.git "$SKIA_DIR"
+        NEEDS_BUILD=true
     fi
     
+    if [[ "$NEEDS_BUILD" != true ]] && [[ -f "$SKIA_LIB" ]]; then
+        log_success "Skia already built (cached)"
+        return 0
+    fi
+    
+    log_info "Building Skia for Linux..."
     cd "$SKIA_DIR"
     
-    # Sync dependencies
-    python3 tools/git-sync-deps
+    # Only sync deps if not already synced (check for third_party/externals)
+    if [[ ! -d "$SKIA_DIR/third_party/externals/freetype" ]]; then
+        log_info "Syncing Skia dependencies (first time only)..."
+        python3 tools/git-sync-deps
+    else
+        log_success "Skia dependencies already synced (cached)"
+    fi
     
-    # Configure for Linux
+    # Configure for Linux (minimal options without deprecated ones)
     bin/gn gen out/linux-release --args='
         is_official_build=true
-        is_component_build=false
-        is_debug=false
-        target_os="linux"
-        target_cpu="x64"
-        skia_use_system_expat=false
-        skia_use_system_freetype2=false
-        skia_use_system_harfbuzz=false
-        skia_use_system_icu=false
-        skia_use_system_libjpeg_turbo=false
-        skia_use_system_libpng=false
-        skia_use_system_libwebp=false
-        skia_use_system_zlib=false
-        skia_enable_gpu=false
+        skia_enable_ganesh=false
+        skia_enable_graphite=false
         skia_enable_skottie=false
         skia_enable_pdf=false
-        skia_enable_skshaper=false
-        skia_enable_svg=false
         skia_use_gl=false
         skia_use_vulkan=false
-        skia_use_metal=false
-        skia_use_dawn=false
-        skia_use_dng_sdk=false
-        skia_use_piex=false
-        skia_use_sfntly=false
-        skia_use_wuffs=true
         extra_cflags_cc=["-frtti"]
     '
     
-    ninja -C out/linux-release
+    # Build only :skia target to avoid skia.h generation issues
+    ninja -C out/linux-release :skia
     
     log_success "Skia built successfully"
 }
 
 # Download VisualMetaFont for Quran text
 setup_visualmetafont() {
-    log_info "Setting up VisualMetaFont..."
-    
     local VMF_DIR="$DEPS_DIR/visualmetafont"
+    
+    # Check if already cloned and for updates
+    if [[ -d "$VMF_DIR/.git" ]]; then
+        cd "$VMF_DIR"
+        git fetch origin --quiet
+        local LOCAL=$(git rev-parse HEAD)
+        local REMOTE=$(git rev-parse origin/master 2>/dev/null || git rev-parse origin/main 2>/dev/null || git rev-parse FETCH_HEAD)
+        
+        if [[ "$LOCAL" != "$REMOTE" ]]; then
+            log_info "VisualMetaFont has updates, pulling..."
+            git pull
+            log_success "VisualMetaFont updated"
+        else
+            log_success "VisualMetaFont already set up (cached, up to date)"
+        fi
+        return 0
+    fi
+    
+    log_info "Setting up VisualMetaFont..."
     clone_or_update "https://github.com/DigitalKhatt/visualmetafont.git" "$VMF_DIR"
     
     log_success "VisualMetaFont ready"
@@ -196,16 +272,20 @@ setup_visualmetafont() {
 
 # Download fonts
 download_fonts() {
-    log_info "Downloading fonts..."
-    
     local FONTS_DIR="$DEPS_DIR/fonts"
+    
+    # Check if already downloaded
+    if [[ -f "$FONTS_DIR/digitalkhatt.otf" ]]; then
+        log_success "Fonts already downloaded (cached)"
+        return 0
+    fi
+    
+    log_info "Downloading fonts..."
     mkdir -p "$FONTS_DIR"
     
     # Madina Quranic (with tajweed)
-    if [[ ! -f "$FONTS_DIR/digitalkhatt.otf" ]]; then
-        curl -L -o "$FONTS_DIR/digitalkhatt.otf" \
-            "https://github.com/DigitalKhatt/mushaf-android/raw/main/app/src/main/assets/fonts/digitalkhatt.otf"
-    fi
+    curl -L -o "$FONTS_DIR/digitalkhatt.otf" \
+        "https://github.com/DigitalKhatt/mushaf-android/raw/main/app/src/main/assets/fonts/digitalkhatt.otf"
     
     log_success "Fonts downloaded"
 }

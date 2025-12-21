@@ -209,10 +209,19 @@ cd quran-renderer
 ./scripts/build-linux.sh
 ```
 
-**Output:**
-- `build/linux/lib/libquranrenderer.so` - Shared library
-- `build/linux/include/quran/renderer.h` - Header file
-- `build/linux/fonts/digitalkhatt.otf` - Font file
+**Output Files:**
+```
+build/linux/
+├── lib/
+│   ├── libquranrenderer.so          # Symlink → libquranrenderer.so.1
+│   ├── libquranrenderer.so.1        # Symlink → libquranrenderer.so.1.0.0
+│   └── libquranrenderer.so.1.0.0    # Shared library (~7 MB)
+├── include/
+│   └── quran/
+│       └── renderer.h               # C API header
+└── fonts/
+    └── digitalkhatt.otf             # Quran font with tajweed colors
+```
 
 **Build Options:**
 ```bash
@@ -224,6 +233,11 @@ Options:
   --skip-deps        Skip building dependencies
   --clean            Clean build directory
 ```
+
+**Caching:**
+The build script automatically caches dependencies in `../quran-deps/`. Subsequent builds check for upstream updates and only rebuild if there are new commits:
+- First build: ~10-20 minutes (downloads and builds Skia, HarfBuzz, etc.)
+- Subsequent builds: ~3 seconds (uses cached artifacts)
 
 **Requirements:**
 - CMake 3.18+
@@ -395,6 +409,49 @@ val fontScale = seekBar.progress / 100f + 0.5f  // Map 0-100 to 0.5-1.5
 renderer.renderPage(width, height, pageIndex, fontScale = fontScale)
 ```
 
+#### Surah/Ayah API (Kotlin)
+
+Access surah and ayah metadata without rendering:
+
+```kotlin
+import org.digitalkhatt.quran.renderer.QuranRenderer
+import org.digitalkhatt.quran.renderer.SurahInfo
+import org.digitalkhatt.quran.renderer.AyahLocation
+
+val renderer = QuranRenderer.getInstance()
+
+// Basic counts (no initialization required)
+val surahCount = renderer.surahCount       // 114
+val totalAyahs = renderer.totalAyahCount   // 6236
+
+// Get surah information
+val surah: SurahInfo? = renderer.getSurahInfo(1)  // Al-Fatiha
+surah?.let {
+    Log.d("Quran", "Surah ${it.number}: ${it.nameTrans} (${it.nameEnglish})")
+    Log.d("Quran", "Arabic: ${it.nameArabic}")
+    Log.d("Quran", "Ayahs: ${it.ayahCount}, Type: ${it.type}")
+    Log.d("Quran", "Revelation Order: ${it.revelationOrder}")
+}
+
+// Get ayah count for a surah
+val ayahs = renderer.getAyahCount(2)  // Al-Baqara = 286
+
+// Find which page a surah starts on
+val yaseenPage = renderer.getSurahStartPage(36)  // Yaseen
+
+// Find which page contains a specific ayah
+val ayatKursiPage = renderer.getAyahPage(2, 255)  // Ayat Al-Kursi
+
+// Get the surah/ayah that starts a page
+val location: AyahLocation? = renderer.getPageLocation(0)
+location?.let {
+    Log.d("Quran", "Page 0 starts with Surah ${it.surahNumber}, Ayah ${it.ayahNumber}")
+}
+
+// Build a surah list
+val surahList = (1..114).mapNotNull { renderer.getSurahInfo(it) }
+```
+
 ---
 
 ### C API (Linux/iOS/macOS)
@@ -523,6 +580,73 @@ class QuranRenderer {
         guard let handle = handle else { return 0 }
         return Int(quran_renderer_get_page_count(handle))
     }
+    
+    // Surah/Ayah API (no handle required)
+    
+    static var surahCount: Int {
+        return Int(quran_renderer_get_surah_count())
+    }
+    
+    static var totalAyahCount: Int {
+        return Int(quran_renderer_get_total_ayah_count())
+    }
+    
+    static func getSurahInfo(_ surahNumber: Int) -> SurahInfo? {
+        var info = QuranSurahInfo()
+        guard quran_renderer_get_surah_info(Int32(surahNumber), &info) else { return nil }
+        return SurahInfo(
+            number: Int(info.number),
+            ayahCount: Int(info.ayahCount),
+            startAyah: Int(info.startAyah),
+            nameArabic: String(cString: info.nameArabic),
+            nameTrans: String(cString: info.nameTrans),
+            nameEnglish: String(cString: info.nameEnglish),
+            type: String(cString: info.type),
+            revelationOrder: Int(info.revelationOrder),
+            rukuCount: Int(info.rukuCount)
+        )
+    }
+    
+    static func getAyahCount(_ surahNumber: Int) -> Int {
+        return Int(quran_renderer_get_ayah_count(Int32(surahNumber)))
+    }
+    
+    static func getSurahStartPage(_ surahNumber: Int) -> Int {
+        return Int(quran_renderer_get_surah_start_page(Int32(surahNumber)))
+    }
+    
+    static func getAyahPage(surah: Int, ayah: Int) -> Int {
+        return Int(quran_renderer_get_ayah_page(Int32(surah), Int32(ayah)))
+    }
+    
+    static func getPageLocation(_ pageIndex: Int) -> AyahLocation? {
+        var loc = QuranAyahLocation()
+        guard quran_renderer_get_page_location(Int32(pageIndex), &loc) else { return nil }
+        return AyahLocation(
+            surahNumber: Int(loc.surahNumber),
+            ayahNumber: Int(loc.ayahNumber),
+            pageIndex: Int(loc.pageIndex)
+        )
+    }
+}
+
+// Swift data structures
+struct SurahInfo {
+    let number: Int
+    let ayahCount: Int
+    let startAyah: Int
+    let nameArabic: String
+    let nameTrans: String
+    let nameEnglish: String
+    let type: String
+    let revelationOrder: Int
+    let rukuCount: Int
+}
+
+struct AyahLocation {
+    let surahNumber: Int
+    let ayahNumber: Int
+    let pageIndex: Int
 }
 
 // Usage
@@ -531,6 +655,92 @@ if let renderer = QuranRenderer(fontPath: Bundle.main.path(forResource: "digital
         // Create UIImage/NSImage from imageData
     }
 }
+
+// Surah/Ayah API usage (static methods, no renderer needed)
+print("Total surahs: \(QuranRenderer.surahCount)")  // 114
+print("Total ayahs: \(QuranRenderer.totalAyahCount)")  // 6236
+
+if let surah = QuranRenderer.getSurahInfo(36) {  // Yaseen
+    print("Surah \(surah.number): \(surah.nameTrans)")
+    print("Ayahs: \(surah.ayahCount), Type: \(surah.type)")
+}
+
+let yaseenPage = QuranRenderer.getSurahStartPage(36)
+let ayatKursiPage = QuranRenderer.getAyahPage(surah: 2, ayah: 255)
+```
+
+---
+
+#### Surah/Ayah API
+
+The library provides metadata APIs for accessing surah and ayah information without needing to render pages.
+
+**C/C++ Usage:**
+
+```c
+#include <quran/renderer.h>
+#include <stdio.h>
+
+int main() {
+    // Get basic counts (no renderer needed)
+    printf("Total Surahs: %d\n", quran_renderer_get_surah_count());  // 114
+    printf("Total Ayahs: %d\n", quran_renderer_get_total_ayah_count());  // 6236
+    
+    // Get surah information
+    QuranSurahInfo info;
+    if (quran_renderer_get_surah_info(1, &info)) {
+        printf("Surah %d: %s (%s)\n", info.number, info.nameTrans, info.nameEnglish);
+        printf("  Arabic: %s\n", info.nameArabic);
+        printf("  Ayahs: %d, Type: %s\n", info.ayahCount, info.type);
+        printf("  Revelation Order: %d\n", info.revelationOrder);
+    }
+    
+    // Get ayah count for a surah
+    int ayahs = quran_renderer_get_ayah_count(2);  // Al-Baqara = 286
+    
+    // Find which page a surah starts on
+    int page = quran_renderer_get_surah_start_page(36);  // Yaseen
+    
+    // Find which page a specific ayah is on
+    page = quran_renderer_get_ayah_page(2, 255);  // Ayat Al-Kursi
+    
+    // Get the surah/ayah that starts a page
+    QuranAyahLocation loc;
+    if (quran_renderer_get_page_location(0, &loc)) {
+        printf("Page 0 starts with Surah %d, Ayah %d\n", 
+               loc.surahNumber, loc.ayahNumber);  // Surah 1, Ayah 1
+    }
+    
+    return 0;
+}
+```
+
+**API Reference:**
+
+| Function | Description |
+|----------|-------------|
+| `quran_renderer_get_surah_count()` | Returns 114 (total surahs) |
+| `quran_renderer_get_total_ayah_count()` | Returns 6236 (total ayahs) |
+| `quran_renderer_get_surah_info(surah, &info)` | Get detailed surah information |
+| `quran_renderer_get_ayah_count(surah)` | Get number of ayahs in a surah |
+| `quran_renderer_get_surah_start_page(surah)` | Get page index where surah starts |
+| `quran_renderer_get_ayah_page(surah, ayah)` | Get page index for specific ayah |
+| `quran_renderer_get_page_location(page, &loc)` | Get surah/ayah at start of page |
+
+**QuranSurahInfo Structure:**
+
+```c
+typedef struct {
+    int number;             // Surah number (1-114)
+    int ayahCount;          // Number of ayahs in this surah
+    int startAyah;          // Starting ayah index (0-based cumulative)
+    const char* nameArabic; // Arabic name (UTF-8)
+    const char* nameTrans;  // Transliterated name
+    const char* nameEnglish;// English name
+    const char* type;       // "Meccan" or "Medinan"
+    int revelationOrder;    // Order of revelation (1-114)
+    int rukuCount;          // Number of rukus
+} QuranSurahInfo;
 ```
 
 ---
@@ -837,6 +1047,140 @@ class _QuranReaderPageState extends State<QuranReaderPage> {
     );
   }
 }
+```
+
+#### Flutter Surah/Ayah API via Method Channel
+
+To access the surah/ayah metadata from Flutter, add a method channel:
+
+**Android side** - Update `MainActivity.kt`:
+
+```kotlin
+import io.flutter.plugin.common.MethodChannel
+
+class MainActivity : FlutterActivity() {
+    private val CHANNEL = "org.digitalkhatt.quran/metadata"
+    
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+        
+        val renderer = QuranRenderer.getInstance()
+        renderer.initialize(assets)
+        
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getSurahCount" -> result.success(renderer.surahCount)
+                "getTotalAyahCount" -> result.success(renderer.totalAyahCount)
+                "getSurahInfo" -> {
+                    val surahNumber = call.argument<Int>("surahNumber") ?: 1
+                    val info = renderer.getSurahInfo(surahNumber)
+                    result.success(info?.let {
+                        mapOf(
+                            "number" to it.number,
+                            "ayahCount" to it.ayahCount,
+                            "nameArabic" to it.nameArabic,
+                            "nameTrans" to it.nameTrans,
+                            "nameEnglish" to it.nameEnglish,
+                            "type" to it.type,
+                            "revelationOrder" to it.revelationOrder,
+                            "rukuCount" to it.rukuCount
+                        )
+                    })
+                }
+                "getAyahCount" -> {
+                    val surahNumber = call.argument<Int>("surahNumber") ?: 1
+                    result.success(renderer.getAyahCount(surahNumber))
+                }
+                "getSurahStartPage" -> {
+                    val surahNumber = call.argument<Int>("surahNumber") ?: 1
+                    result.success(renderer.getSurahStartPage(surahNumber))
+                }
+                "getAyahPage" -> {
+                    val surahNumber = call.argument<Int>("surahNumber") ?: 1
+                    val ayahNumber = call.argument<Int>("ayahNumber") ?: 1
+                    result.success(renderer.getAyahPage(surahNumber, ayahNumber))
+                }
+                "getPageLocation" -> {
+                    val pageIndex = call.argument<Int>("pageIndex") ?: 0
+                    val loc = renderer.getPageLocation(pageIndex)
+                    result.success(loc?.let {
+                        mapOf("surahNumber" to it.surahNumber, "ayahNumber" to it.ayahNumber)
+                    })
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+}
+```
+
+**Flutter side** - Create `lib/quran_metadata.dart`:
+
+```dart
+import 'package:flutter/services.dart';
+
+class SurahInfo {
+  final int number;
+  final int ayahCount;
+  final String nameArabic;
+  final String nameTrans;
+  final String nameEnglish;
+  final String type;
+  final int revelationOrder;
+  final int rukuCount;
+
+  SurahInfo.fromMap(Map<dynamic, dynamic> map)
+      : number = map['number'],
+        ayahCount = map['ayahCount'],
+        nameArabic = map['nameArabic'],
+        nameTrans = map['nameTrans'],
+        nameEnglish = map['nameEnglish'],
+        type = map['type'],
+        revelationOrder = map['revelationOrder'],
+        rukuCount = map['rukuCount'];
+}
+
+class QuranMetadata {
+  static const _channel = MethodChannel('org.digitalkhatt.quran/metadata');
+
+  static Future<int> get surahCount => _channel.invokeMethod<int>('getSurahCount').then((v) => v ?? 114);
+  static Future<int> get totalAyahCount => _channel.invokeMethod<int>('getTotalAyahCount').then((v) => v ?? 6236);
+
+  static Future<SurahInfo?> getSurahInfo(int surahNumber) async {
+    final map = await _channel.invokeMethod<Map>('getSurahInfo', {'surahNumber': surahNumber});
+    return map != null ? SurahInfo.fromMap(map) : null;
+  }
+
+  static Future<int> getAyahCount(int surahNumber) =>
+      _channel.invokeMethod<int>('getAyahCount', {'surahNumber': surahNumber}).then((v) => v ?? -1);
+
+  static Future<int> getSurahStartPage(int surahNumber) =>
+      _channel.invokeMethod<int>('getSurahStartPage', {'surahNumber': surahNumber}).then((v) => v ?? -1);
+
+  static Future<int> getAyahPage(int surahNumber, int ayahNumber) =>
+      _channel.invokeMethod<int>('getAyahPage', {'surahNumber': surahNumber, 'ayahNumber': ayahNumber}).then((v) => v ?? -1);
+
+  static Future<({int surahNumber, int ayahNumber})?> getPageLocation(int pageIndex) async {
+    final map = await _channel.invokeMethod<Map>('getPageLocation', {'pageIndex': pageIndex});
+    return map != null ? (surahNumber: map['surahNumber'] as int, ayahNumber: map['ayahNumber'] as int) : null;
+  }
+  
+  static Future<List<SurahInfo>> getAllSurahs() async {
+    final surahs = <SurahInfo>[];
+    for (int i = 1; i <= 114; i++) {
+      final info = await getSurahInfo(i);
+      if (info != null) surahs.add(info);
+    }
+    return surahs;
+  }
+}
+
+// Usage example:
+// final surah = await QuranMetadata.getSurahInfo(1);
+// print('${surah?.nameTrans}: ${surah?.ayahCount} ayahs');
+// 
+// final page = await QuranMetadata.getAyahPage(2, 255);  // Ayat Al-Kursi
+// print('Ayat Al-Kursi is on page $page');
 ```
 
 ---

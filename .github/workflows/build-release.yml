@@ -1,0 +1,227 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: false
+        default: 'dev'
+
+env:
+  DEPS_CACHE_KEY: deps-v1
+
+jobs:
+  # ==========================================================================
+  # Linux + Android Build (both on Ubuntu)
+  # ==========================================================================
+  build-linux-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build python3 libgl1-mesa-dev libfontconfig1-dev
+
+      - name: Setup Android NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK
+        run: |
+          sdkmanager --install "ndk;28.0.12674087"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.0.12674087" >> $GITHUB_ENV
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        id: deps-cache
+        with:
+          path: ../quran-deps
+          key: ${{ env.DEPS_CACHE_KEY }}-linux-android-${{ hashFiles('scripts/build-linux.sh', 'scripts/build-android-so.sh') }}
+
+      - name: Build Linux library
+        run: |
+          chmod +x scripts/build-linux.sh
+          ./scripts/build-linux.sh
+
+      - name: Build Android .so (all ABIs)
+        run: |
+          chmod +x scripts/build-android-so.sh
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            echo "Building for $abi..."
+            ./scripts/build-android-so.sh --abi $abi
+          done
+
+      - name: Package Linux artifacts
+        run: |
+          mkdir -p release/linux
+          cp build/linux/lib/libquranrenderer.so* release/linux/
+          cp -r build/linux/include release/linux/
+          cp -r build/linux/fonts release/linux/ 2>/dev/null || true
+          cd release && zip -r quran-renderer-linux-x64.zip linux
+
+      - name: Package Android artifacts
+        run: |
+          mkdir -p release/android/jniLibs
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            mkdir -p release/android/jniLibs/$abi
+            cp build/android/$abi/libquranrenderer.so release/android/jniLibs/$abi/
+          done
+          cp -r build/linux/include release/android/
+          cd release && zip -r quran-renderer-android-all.zip android
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: release/quran-renderer-linux-x64.zip
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-all
+          path: release/quran-renderer-android-all.zip
+
+  # ==========================================================================
+  # macOS Build
+  # ==========================================================================
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install ninja python3
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        id: deps-cache
+        with:
+          path: ../quran-deps
+          key: ${{ env.DEPS_CACHE_KEY }}-macos-${{ hashFiles('scripts/build-apple.sh') }}
+
+      - name: Build macOS library
+        run: |
+          chmod +x scripts/build-apple.sh
+          ./scripts/build-apple.sh --macos-only
+
+      - name: Package macOS artifacts
+        run: |
+          mkdir -p release/macos
+          cp build/apple/macos/lib/libquranrenderer.dylib release/macos/
+          cp -r build/apple/macos/include release/macos/
+          cp -r build/apple/macos/fonts release/macos/ 2>/dev/null || true
+          cd release && zip -r quran-renderer-macos-universal.zip macos
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-universal
+          path: release/quran-renderer-macos-universal.zip
+
+  # ==========================================================================
+  # iOS Build
+  # ==========================================================================
+  build-ios:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install ninja python3
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        id: deps-cache
+        with:
+          path: ../quran-deps
+          key: ${{ env.DEPS_CACHE_KEY }}-ios-${{ hashFiles('scripts/build-apple.sh') }}
+
+      - name: Build iOS framework
+        run: |
+          chmod +x scripts/build-apple.sh
+          ./scripts/build-apple.sh --ios-only
+
+      - name: Package iOS artifacts
+        run: |
+          mkdir -p release
+          cd build/apple && zip -r ../../release/quran-renderer-ios.zip QuranRenderer.xcframework
+
+      - name: Upload iOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-xcframework
+          path: release/quran-renderer-ios.zip
+
+  # ==========================================================================
+  # Create Release
+  # ==========================================================================
+  create-release:
+    needs: [build-linux-android, build-macos, build-ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ github.event.inputs.version || 'dev' }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Quran Renderer ${{ steps.version.outputs.version }}
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, 'dev') }}
+          files: |
+            artifacts/linux-x64/quran-renderer-linux-x64.zip
+            artifacts/android-all/quran-renderer-android-all.zip
+            artifacts/macos-universal/quran-renderer-macos-universal.zip
+            artifacts/ios-xcframework/quran-renderer-ios.zip
+          body: |
+            ## Quran Renderer ${{ steps.version.outputs.version }}
+            
+            Cross-platform Quran text rendering library with tajweed coloring.
+            
+            ### Downloads
+            
+            | Platform | File | Contents |
+            |----------|------|----------|
+            | **Linux** | `quran-renderer-linux-x64.zip` | `libquranrenderer.so`, headers, fonts |
+            | **Android** | `quran-renderer-android-all.zip` | `.so` for arm64-v8a, armeabi-v7a, x86_64 |
+            | **macOS** | `quran-renderer-macos-universal.zip` | `libquranrenderer.dylib` (arm64 + x86_64) |
+            | **iOS** | `quran-renderer-ios.zip` | `QuranRenderer.xcframework` |
+            
+            ### Usage
+            
+            See [README.md](https://github.com/${{ github.repository }}#usage) for integration instructions.
+            
+            #### Dart FFI (Flutter)
+            ```dart
+            // Android/Linux
+            final lib = DynamicLibrary.open('libquranrenderer.so');
+            
+            // macOS
+            final lib = DynamicLibrary.open('libquranrenderer.dylib');
+            
+            // iOS (statically linked)
+            final lib = DynamicLibrary.process();
+            ```

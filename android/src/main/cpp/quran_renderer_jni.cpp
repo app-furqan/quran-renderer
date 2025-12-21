@@ -139,4 +139,99 @@ Java_org_digitalkhatt_quran_renderer_QuranRenderer_nativeGetPageCount(
     return g_renderer ? quran_renderer_get_page_count(g_renderer) : 0;
 }
 
+// Surah/Ayah API - these don't require renderer initialization
+
+JNIEXPORT jint JNICALL
+Java_org_digitalkhatt_quran_renderer_QuranRenderer_nativeGetSurahCount(
+    JNIEnv *env,
+    jobject thiz
+) {
+    return quran_renderer_get_surah_count();
+}
+
+JNIEXPORT jint JNICALL
+Java_org_digitalkhatt_quran_renderer_QuranRenderer_nativeGetTotalAyahCount(
+    JNIEnv *env,
+    jobject thiz
+) {
+    return quran_renderer_get_total_ayah_count();
+}
+
+JNIEXPORT jint JNICALL
+Java_org_digitalkhatt_quran_renderer_QuranRenderer_nativeGetAyahCount(
+    JNIEnv *env,
+    jobject thiz,
+    jint surahNumber
+) {
+    return quran_renderer_get_ayah_count(surahNumber);
+}
+
+JNIEXPORT jint JNICALL
+Java_org_digitalkhatt_quran_renderer_QuranRenderer_nativeGetSurahStartPage(
+    JNIEnv *env,
+    jobject thiz,
+    jint surahNumber
+) {
+    return quran_renderer_get_surah_start_page(surahNumber);
+}
+
+JNIEXPORT jint JNICALL
+Java_org_digitalkhatt_quran_renderer_QuranRenderer_nativeGetAyahPage(
+    JNIEnv *env,
+    jobject thiz,
+    jint surahNumber,
+    jint ayahNumber
+) {
+    return quran_renderer_get_ayah_page(surahNumber, ayahNumber);
+}
+
+JNIEXPORT jobject JNICALL
+Java_org_digitalkhatt_quran_renderer_QuranRenderer_nativeGetPageLocation(
+    JNIEnv *env,
+    jobject thiz,
+    jint pageIndex
+) {
+    QuranAyahLocation loc;
+    if (!quran_renderer_get_page_location(pageIndex, &loc)) {
+        return nullptr;
+    }
+    
+    jclass cls = env->FindClass("org/digitalkhatt/quran/renderer/AyahLocation");
+    if (!cls) return nullptr;
+    
+    jmethodID constructor = env->GetMethodID(cls, "<init>", "(III)V");
+    if (!constructor) return nullptr;
+    
+    return env->NewObject(cls, constructor, loc.surahNumber, loc.ayahNumber, loc.pageIndex);
+}
+
+JNIEXPORT jobject JNICALL
+Java_org_digitalkhatt_quran_renderer_QuranRenderer_nativeGetSurahInfo(
+    JNIEnv *env,
+    jobject thiz,
+    jint surahNumber
+) {
+    QuranSurahInfo info;
+    if (!quran_renderer_get_surah_info(surahNumber, &info)) {
+        return nullptr;
+    }
+    
+    jclass cls = env->FindClass("org/digitalkhatt/quran/renderer/SurahInfo");
+    if (!cls) return nullptr;
+    
+    jmethodID constructor = env->GetMethodID(cls, "<init>", 
+        "(IIILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;II)V");
+    if (!constructor) return nullptr;
+    
+    jstring nameArabic = env->NewStringUTF(info.nameArabic);
+    jstring nameTrans = env->NewStringUTF(info.nameTrans);
+    jstring nameEnglish = env->NewStringUTF(info.nameEnglish);
+    jstring type = env->NewStringUTF(info.type);
+    
+    return env->NewObject(cls, constructor,
+        info.number, info.ayahCount, info.startAyah,
+        nameArabic, nameTrans, nameEnglish, type,
+        info.revelationOrder, info.rukuCount);
+}
+
 } // extern "C"

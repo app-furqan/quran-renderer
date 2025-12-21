@@ -89,6 +89,87 @@ void quran_renderer_draw_page(
  */
 int quran_renderer_get_page_count(QuranRendererHandle renderer);
 
+/* ============================================================================
+ * Surah/Ayah API
+ * ============================================================================ */
+
+/**
+ * Surah information structure
+ */
+typedef struct {
+    int number;             // Surah number (1-114)
+    int ayahCount;          // Number of ayahs in this surah
+    int startAyah;          // Starting ayah index (0-based cumulative)
+    const char* nameArabic; // Arabic name (UTF-8)
+    const char* nameTrans;  // Transliterated name
+    const char* nameEnglish;// English name
+    const char* type;       // "Meccan" or "Medinan"
+    int revelationOrder;    // Order of revelation (1-114)
+    int rukuCount;          // Number of rukus
+} QuranSurahInfo;
+
+/**
+ * Ayah location structure
+ */
+typedef struct {
+    int surahNumber;        // Surah number (1-114)
+    int ayahNumber;         // Ayah number within surah (1-based)
+    int pageIndex;          // Page index (0-603)
+} QuranAyahLocation;
+
+/**
+ * Get the total number of surahs (always 114)
+ */
+int quran_renderer_get_surah_count(void);
+
+/**
+ * Get the total number of ayahs (always 6236)
+ */
+int quran_renderer_get_total_ayah_count(void);
+
+/**
+ * Get information about a surah
+ * 
+ * @param surahNumber Surah number (1-114)
+ * @param info Output structure to fill
+ * @return true on success, false if surahNumber is invalid
+ */
+bool quran_renderer_get_surah_info(int surahNumber, QuranSurahInfo* info);
+
+/**
+ * Get the page index where a surah starts
+ * 
+ * @param surahNumber Surah number (1-114)
+ * @return Page index (0-603), or -1 if invalid
+ */
+int quran_renderer_get_surah_start_page(int surahNumber);
+
+/**
+ * Get the page index for a specific ayah
+ * 
+ * @param surahNumber Surah number (1-114)
+ * @param ayahNumber Ayah number within surah (1-based)
+ * @return Page index (0-603), or -1 if invalid
+ */
+int quran_renderer_get_ayah_page(int surahNumber, int ayahNumber);
+
+/**
+ * Get surah and ayah number from a page index
+ * 
+ * @param pageIndex Page index (0-603)
+ * @param location Output structure with surah/ayah at start of page
+ * @return true on success, false if pageIndex is invalid
+ */
+bool quran_renderer_get_page_location(int pageIndex, QuranAyahLocation* location);
+
+/**
+ * Get the number of ayahs in a surah
+ * 
+ * @param surahNumber Surah number (1-114)
+ * @return Number of ayahs, or -1 if invalid
+ */
+int quran_renderer_get_ayah_count(int surahNumber);
+
 #ifdef __cplusplus
 }
 #endif

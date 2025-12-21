@@ -114,19 +114,36 @@ check_requirements() {
     log_success "All requirements satisfied"
 }
 
-# Clone or update repository
+# Clone or update repository - returns 0 if updated/cloned, 1 if no changes
 clone_or_update() {
     local repo_url="$1"
     local target_dir="$2"
     local branch="${3:-}"
     
     if [[ -d "$target_dir/.git" ]]; then
-        log_info "Updating $(basename "$target_dir")..."
         cd "$target_dir"
-        git fetch origin
+        git fetch origin --quiet
+        
+        local LOCAL=$(git rev-parse HEAD)
+        local REMOTE
         if [[ -n "$branch" ]]; then
-            git checkout "$branch"
-            git pull origin "$branch" || true
+            REMOTE=$(git rev-parse origin/$branch 2>/dev/null || git rev-parse FETCH_HEAD)
+        else
+            REMOTE=$(git rev-parse origin/master 2>/dev/null || git rev-parse origin/main 2>/dev/null || git rev-parse FETCH_HEAD)
+        fi
+        
+        if [[ "$LOCAL" != "$REMOTE" ]]; then
+            log_info "$(basename "$target_dir") has updates, pulling..."
+            if [[ -n "$branch" ]]; then
+                git checkout "$branch"
+                git pull origin "$branch" || true
+            else
+                git pull || true
+            fi
+            return 0  # Updated
+        else
+            log_info "$(basename "$target_dir") is up to date"
+            return 1  # No changes
         fi
     else
         log_info "Cloning $(basename "$target_dir")..."
@@ -135,6 +152,7 @@ clone_or_update() {
         else
             git clone "$repo_url" "$target_dir"
         fi
+        return 0  # Fresh clone
     fi
 }
 
@@ -143,12 +161,23 @@ build_harfbuzz_platform() {
     local PLATFORM=$1  # macos, ios, ios-simulator
     local ARCH=$2      # arm64, x86_64
     
-    log_info "Building HarfBuzz for $PLATFORM-$ARCH..."
-    
     local HB_DIR="$DEPS_DIR/harfbuzz"
     local HB_BUILD="$DEPS_DIR/harfbuzz-build-$PLATFORM-$ARCH"
+    local HB_LIB="$HB_BUILD/libharfbuzz.a"
     
-    clone_or_update "https://github.com/DigitalKhatt/harfbuzz.git" "$HB_DIR" "justification"
+    # Check for updates first
+    local HB_UPDATED=false
+    if clone_or_update "https://github.com/DigitalKhatt/harfbuzz.git" "$HB_DIR" "justification"; then
+        HB_UPDATED=true
+    fi
+    
+    # Check if already built and no updates
+    if [[ -f "$HB_LIB" ]] && [[ "$HB_UPDATED" != true ]]; then
+        log_success "HarfBuzz for $PLATFORM-$ARCH already built (cached, up to date)"
+        return 0
+    fi
+    
+    log_info "Building HarfBuzz for $PLATFORM-$ARCH..."
     
     mkdir -p "$HB_BUILD"
     cd "$HB_BUILD"
@@ -196,17 +225,49 @@ build_skia_platform() {
     local PLATFORM=$1
     local ARCH=$2
     
-    log_info "Building Skia for $PLATFORM-$ARCH..."
-    
     local SKIA_DIR="$DEPS_DIR/skia"
+    local OUT_DIR="out/$PLATFORM-$ARCH"
+    local SKIA_LIB="$SKIA_DIR/$OUT_DIR/libskia.a"
+    local NEEDS_BUILD=false
     
-    if [[ ! -d "$SKIA_DIR" ]]; then
+    # Check if Skia repo exists and for updates
+    if [[ -d "$SKIA_DIR/.git" ]]; then
+        cd "$SKIA_DIR"
+        git fetch origin --quiet
+        local LOCAL=$(git rev-parse HEAD)
+        local REMOTE=$(git rev-parse origin/main 2>/dev/null || git rev-parse FETCH_HEAD)
+        
+        if [[ "$LOCAL" != "$REMOTE" ]]; then
+            log_info "Skia has updates available, pulling..."
+            git pull origin main
+            NEEDS_BUILD=true
+        elif [[ -f "$SKIA_LIB" ]]; then
+            log_success "Skia for $PLATFORM-$ARCH already built (cached, up to date)"
+            return 0
+        else
+            NEEDS_BUILD=true
+        fi
+    else
         log_info "Cloning Skia..."
         git clone https://skia.googlesource.com/skia.git "$SKIA_DIR"
+        NEEDS_BUILD=true
     fi
     
+    if [[ "$NEEDS_BUILD" != true ]] && [[ -f "$SKIA_LIB" ]]; then
+        log_success "Skia for $PLATFORM-$ARCH already built (cached)"
+        return 0
+    fi
+    
+    log_info "Building Skia for $PLATFORM-$ARCH..."
     cd "$SKIA_DIR"
-    python3 tools/git-sync-deps
+    
+    # Only sync deps if not already synced
+    if [[ ! -d "$SKIA_DIR/third_party/externals/freetype" ]]; then
+        log_info "Syncing Skia dependencies (first time only)..."
+        python3 tools/git-sync-deps
+    else
+        log_success "Skia dependencies already synced (cached)"
+    fi
     
     local TARGET_OS=""
     local EXTRA_ARGS=""
@@ -225,8 +286,6 @@ build_skia_platform() {
             EXTRA_ARGS="ios_min_target=\"$IOS_DEPLOYMENT_TARGET\" ios_use_simulator=true"
             ;;
     esac
-    
-    local OUT_DIR="out/$PLATFORM-$ARCH"
     
     bin/gn gen "$OUT_DIR" --args="
         is_official_build=true
@@ -266,22 +325,45 @@ build_skia_platform() {
 
 # Setup VisualMetaFont
 setup_visualmetafont() {
-    log_info "Setting up VisualMetaFont..."
     local VMF_DIR="$DEPS_DIR/visualmetafont"
+    
+    # Check if already cloned and for updates
+    if [[ -d "$VMF_DIR/.git" ]]; then
+        cd "$VMF_DIR"
+        git fetch origin --quiet
+        local LOCAL=$(git rev-parse HEAD)
+        local REMOTE=$(git rev-parse origin/master 2>/dev/null || git rev-parse origin/main 2>/dev/null || git rev-parse FETCH_HEAD)
+        
+        if [[ "$LOCAL" != "$REMOTE" ]]; then
+            log_info "VisualMetaFont has updates, pulling..."
+            git pull
+            log_success "VisualMetaFont updated"
+        else
+            log_success "VisualMetaFont already set up (cached, up to date)"
+        fi
+        return 0
+    fi
+    
+    log_info "Setting up VisualMetaFont..."
     clone_or_update "https://github.com/DigitalKhatt/visualmetafont.git" "$VMF_DIR"
     log_success "VisualMetaFont ready"
 }
 
 # Download fonts
 download_fonts() {
-    log_info "Downloading fonts..."
     local FONTS_DIR="$DEPS_DIR/fonts"
+    
+    # Check if already downloaded
+    if [[ -f "$FONTS_DIR/digitalkhatt.otf" ]]; then
+        log_success "Fonts already downloaded (cached)"
+        return 0
+    fi
+    
+    log_info "Downloading fonts..."
     mkdir -p "$FONTS_DIR"
     
-    if [[ ! -f "$FONTS_DIR/digitalkhatt.otf" ]]; then
-        curl -L -o "$FONTS_DIR/digitalkhatt.otf" \
-            "https://github.com/DigitalKhatt/mushaf-android/raw/main/app/src/main/assets/fonts/digitalkhatt.otf"
-    fi
+    curl -L -o "$FONTS_DIR/digitalkhatt.otf" \
+        "https://github.com/DigitalKhatt/mushaf-android/raw/main/app/src/main/assets/fonts/digitalkhatt.otf"
     
     log_success "Fonts downloaded"
 }

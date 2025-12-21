@@ -2,12 +2,26 @@
 // HarfBuzz-Skia bridge - Draw and paint callbacks
 //
 
+// Suppress HarfBuzz internal header warnings
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-braces"
+#pragma GCC diagnostic ignored "-Wsign-compare"
+#pragma GCC diagnostic ignored "-Wdouble-promotion"
+
 #include <hb.h>
 #include <hb-machinery.hh>
+
+#pragma GCC diagnostic pop
+
+// Suppress Skia header warnings
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-braces"
 
 #include "SkPath.h"
 #include "SkPathBuilder.h"
 #include "SkCanvas.h"
+
+#pragma GCC diagnostic pop
 
 #include "hb_skia_canvas.h"
 

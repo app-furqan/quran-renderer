@@ -4,6 +4,30 @@ import android.content.res.AssetManager
 import android.graphics.Bitmap
 
 /**
+ * Surah information data class.
+ */
+data class SurahInfo(
+    val number: Int,           // Surah number (1-114)
+    val ayahCount: Int,        // Number of ayahs in this surah
+    val startAyah: Int,        // Starting ayah index (0-based cumulative)
+    val nameArabic: String,    // Arabic name
+    val nameTrans: String,     // Transliterated name
+    val nameEnglish: String,   // English name
+    val type: String,          // "Meccan" or "Medinan"
+    val revelationOrder: Int,  // Order of revelation (1-114)
+    val rukuCount: Int         // Number of rukus
+)
+
+/**
+ * Ayah location data class.
+ */
+data class AyahLocation(
+    val surahNumber: Int,      // Surah number (1-114)
+    val ayahNumber: Int,       // Ayah number within surah (1-based)
+    val pageIndex: Int         // Page index (0-603)
+)
+
+/**
  * Available DigitalKhatt font styles.
  * 
  * Note: Only MADINA_QURANIC includes tajweed coloring (COLR/CPAL tables).
@@ -184,6 +208,73 @@ class QuranRenderer private constructor() {
     val pageCount: Int
         get() = if (initialized) nativeGetPageCount() else 0
 
+    // ============================================================================
+    // Surah/Ayah API - These work without renderer initialization
+    // ============================================================================
+
+    /**
+     * Get total number of surahs (always 114).
+     */
+    val surahCount: Int
+        get() = nativeGetSurahCount()
+
+    /**
+     * Get total number of ayahs in the Quran (always 6236).
+     */
+    val totalAyahCount: Int
+        get() = nativeGetTotalAyahCount()
+
+    /**
+     * Get information about a surah.
+     * 
+     * @param surahNumber Surah number (1-114)
+     * @return SurahInfo or null if invalid surah number
+     */
+    fun getSurahInfo(surahNumber: Int): SurahInfo? {
+        return nativeGetSurahInfo(surahNumber)
+    }
+
+    /**
+     * Get the number of ayahs in a surah.
+     * 
+     * @param surahNumber Surah number (1-114)
+     * @return Number of ayahs, or -1 if invalid
+     */
+    fun getAyahCount(surahNumber: Int): Int {
+        return nativeGetAyahCount(surahNumber)
+    }
+
+    /**
+     * Get the page index where a surah starts.
+     * 
+     * @param surahNumber Surah number (1-114)
+     * @return Page index (0-603), or -1 if invalid
+     */
+    fun getSurahStartPage(surahNumber: Int): Int {
+        return nativeGetSurahStartPage(surahNumber)
+    }
+
+    /**
+     * Get the page index for a specific ayah.
+     * 
+     * @param surahNumber Surah number (1-114)
+     * @param ayahNumber Ayah number within surah (1-based)
+     * @return Page index (0-603), or -1 if invalid
+     */
+    fun getAyahPage(surahNumber: Int, ayahNumber: Int): Int {
+        return nativeGetAyahPage(surahNumber, ayahNumber)
+    }
+
+    /**
+     * Get the surah and ayah that starts a page.
+     * 
+     * @param pageIndex Page index (0-603)
+     * @return AyahLocation or null if invalid page index
+     */
+    fun getPageLocation(pageIndex: Int): AyahLocation? {
+        return nativeGetPageLocation(pageIndex)
+    }
+
     /**
      * Release native resources.
      */
@@ -200,4 +291,13 @@ class QuranRenderer private constructor() {
     private external fun nativeDestroy()
     private external fun nativeDrawPage(bitmap: Bitmap, pageIndex: Int, tajweed: Boolean, justify: Boolean, fontScale: Float)
     private external fun nativeGetPageCount(): Int
+    
+    // Surah/Ayah native methods
+    private external fun nativeGetSurahCount(): Int
+    private external fun nativeGetTotalAyahCount(): Int
+    private external fun nativeGetSurahInfo(surahNumber: Int): SurahInfo?
+    private external fun nativeGetAyahCount(surahNumber: Int): Int
+    private external fun nativeGetSurahStartPage(surahNumber: Int): Int
+    private external fun nativeGetAyahPage(surahNumber: Int, ayahNumber: Int): Int
+    private external fun nativeGetPageLocation(pageIndex: Int): AyahLocation?
 }

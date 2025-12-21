@@ -9,17 +9,33 @@
 #include <string.h>
 #include <math.h>
 
+// Suppress Skia header warnings
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-braces"
+#pragma GCC diagnostic ignored "-Wdouble-promotion"
+
 #include "SkCanvas.h"
 #include "SkSurface.h"
 #include "SkPath.h"
 #include "SkPathBuilder.h"
 
+#pragma GCC diagnostic pop
+
+// Suppress HarfBuzz internal header warnings
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-braces"
+#pragma GCC diagnostic ignored "-Wsign-compare"
+#pragma GCC diagnostic ignored "-Wdouble-promotion"
+
 #include <hb.h>
 #include <hb-buffer.hh>
 #include <hb-font.hh>
 
+#pragma GCC diagnostic pop
+
 #include "hb_skia_canvas.h"
 #include "quran.h"
+#include "quran_metadata.h"
 
 #include <string>
 #include <sstream>
@@ -385,6 +401,111 @@ void quran_renderer_draw_page(
 
 int quran_renderer_get_page_count(QuranRendererHandle renderer) {
     return renderer ? 604 : 0;
+}
+
+// ============================================================================
+// Surah/Ayah API Implementation
+// ============================================================================
+
+int quran_renderer_get_surah_count(void) {
+    return QURAN_SURAH_COUNT;
+}
+
+int quran_renderer_get_total_ayah_count(void) {
+    return QURAN_TOTAL_AYAHS;
+}
+
+bool quran_renderer_get_surah_info(int surahNumber, QuranSurahInfo* info) {
+    if (surahNumber < 1 || surahNumber > 114 || !info) {
+        return false;
+    }
+    
+    const SurahData& surah = SURAH_DATA[surahNumber];
+    info->number = surah.number;
+    info->ayahCount = surah.ayahCount;
+    info->startAyah = surah.startAyah;
+    info->nameArabic = surah.nameArabic;
+    info->nameTrans = surah.nameTrans;
+    info->nameEnglish = surah.nameEnglish;
+    info->type = surah.type;
+    info->revelationOrder = surah.revelationOrder;
+    info->rukuCount = surah.rukuCount;
+    
+    return true;
+}
+
+int quran_renderer_get_surah_start_page(int surahNumber) {
+    if (surahNumber < 1 || surahNumber > 114) {
+        return -1;
+    }
+    
+    // Find the first page where this surah starts
+    for (int i = 0; i < QURAN_PAGE_COUNT; i++) {
+        if (PAGE_LOCATIONS[i].surahNumber == surahNumber && PAGE_LOCATIONS[i].ayahNumber == 1) {
+            return i;
+        }
+        // Also check if we're past this surah already (it must have started before)
+        if (PAGE_LOCATIONS[i].surahNumber > surahNumber) {
+            // Go back to find where it started
+            for (int j = i - 1; j >= 0; j--) {
+                if (PAGE_LOCATIONS[j].surahNumber == surahNumber) {
+                    return j;
+                }
+                if (PAGE_LOCATIONS[j].surahNumber < surahNumber) {
+                    return j + 1;
+                }
+            }
+        }
+    }
+    
+    // Surah not found in page locations (shouldn't happen)
+    return -1;
+}
+
+int quran_renderer_get_ayah_page(int surahNumber, int ayahNumber) {
+    if (surahNumber < 1 || surahNumber > 114) {
+        return -1;
+    }
+    
+    const SurahData& surah = SURAH_DATA[surahNumber];
+    if (ayahNumber < 1 || ayahNumber > surah.ayahCount) {
+        return -1;
+    }
+    
+    // Find the page containing this ayah
+    // We need to find the last page where the starting location is <= our target ayah
+    for (int i = QURAN_PAGE_COUNT - 1; i >= 0; i--) {
+        const PageLocation& loc = PAGE_LOCATIONS[i];
+        if (loc.surahNumber < surahNumber) {
+            return i + 1;  // Our ayah is on the next page
+        }
+        if (loc.surahNumber == surahNumber && loc.ayahNumber <= ayahNumber) {
+            return i;
+        }
+    }
+    
+    return 0;  // Default to first page
+}
+
+bool quran_renderer_get_page_location(int pageIndex, QuranAyahLocation* location) {
+    if (pageIndex < 0 || pageIndex >= QURAN_PAGE_COUNT || !location) {
+        return false;
+    }
+    
+    const PageLocation& loc = PAGE_LOCATIONS[pageIndex];
+    location->surahNumber = loc.surahNumber;
+    location->ayahNumber = loc.ayahNumber;
+    location->pageIndex = pageIndex;
+    
+    return true;
+}
+
+int quran_renderer_get_ayah_count(int surahNumber) {
+    if (surahNumber < 1 || surahNumber > 114) {
+        return -1;
+    }
+    
+    return SURAH_DATA[surahNumber].ayahCount;
 }
 
 } // extern "C"
