@@ -549,9 +549,142 @@ class QuranRenderer {
 
 ---
 
-## Building Skia from Source
+## Building Dependencies from Source
 
-If you need to build Skia yourself:
+This section explains how to build/update all dependencies from their source repositories.
+
+### 1. Clone All Dependencies
+
+```bash
+# Create a working directory
+mkdir -p ~/quran-renderer-deps && cd ~/quran-renderer-deps
+
+# Clone HarfBuzz (DigitalKhatt fork with justification support)
+git clone -b justification https://github.com/DigitalKhatt/harfbuzz.git
+
+# Clone VisualMetaFont (Quran text data)
+git clone https://github.com/DigitalKhatt/visualmetafont.git
+
+# Clone Skia (for building static library)
+git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+export PATH="$PWD/depot_tools:$PATH"
+git clone https://skia.googlesource.com/skia.git
+```
+
+### 2. Build Skia for Android
+
+```bash
+cd ~/quran-renderer-deps/skia
+python3 tools/git-sync-deps
+
+# Build for all Android ABIs
+# arm64-v8a
+bin/gn gen out/android-arm64 --args='
+  target_os="android"
+  target_cpu="arm64"
+  ndk="/path/to/Android/Sdk/ndk/28.2.13676358"
+  is_official_build=true
+  is_component_build=false
+  is_debug=false
+  skia_use_system_freetype2=false
+  skia_use_freetype=true
+  skia_enable_fontmgr_android=true
+  skia_use_gl=true
+'
+ninja -C out/android-arm64 skia
+
+# armeabi-v7a
+bin/gn gen out/android-arm --args='
+  target_os="android"
+  target_cpu="arm"
+  ndk="/path/to/Android/Sdk/ndk/28.2.13676358"
+  is_official_build=true
+  is_component_build=false
+  is_debug=false
+  skia_use_system_freetype2=false
+  skia_use_freetype=true
+  skia_enable_fontmgr_android=true
+  skia_use_gl=true
+'
+ninja -C out/android-arm skia
+
+# x86_64 (for emulators)
+bin/gn gen out/android-x64 --args='
+  target_os="android"
+  target_cpu="x64"
+  ndk="/path/to/Android/Sdk/ndk/28.2.13676358"
+  is_official_build=true
+  is_component_build=false
+  is_debug=false
+  skia_use_system_freetype2=false
+  skia_use_freetype=true
+  skia_enable_fontmgr_android=true
+  skia_use_gl=true
+'
+ninja -C out/android-x64 skia
+```
+
+### 3. Organize Skia Output
+
+```bash
+# Create output directory structure
+mkdir -p ~/quran-renderer-deps/skia-build/out/{arm64-v8a,armeabi-v7a,x86_64,include_root}
+
+# Copy static libraries
+cp ~/quran-renderer-deps/skia/out/android-arm64/libskia.a ~/quran-renderer-deps/skia-build/out/arm64-v8a/
+cp ~/quran-renderer-deps/skia/out/android-arm/libskia.a ~/quran-renderer-deps/skia-build/out/armeabi-v7a/
+cp ~/quran-renderer-deps/skia/out/android-x64/libskia.a ~/quran-renderer-deps/skia-build/out/x86_64/
+
+# Copy headers (maintaining structure for includes like "include/core/SkCanvas.h")
+cp -r ~/quran-renderer-deps/skia/include ~/quran-renderer-deps/skia-build/out/include_root/
+```
+
+### 4. Configure local.properties
+
+```properties
+# In your quran-renderer-android/local.properties:
+sdk.dir=/path/to/Android/Sdk
+harfbuzz.dir=/home/user/quran-renderer-deps/harfbuzz
+vmf.dir=/home/user/quran-renderer-deps/visualmetafont
+skia.dir=/home/user/quran-renderer-deps/skia-build/out
+```
+
+### 5. Build the AAR
+
+```bash
+cd /path/to/quran-renderer-android
+./gradlew :android:assembleRelease
+```
+
+Output: `android/build/outputs/aar/android-release.aar`
+
+---
+
+### Updating Dependencies
+
+To update to newer versions:
+
+```bash
+# Update HarfBuzz
+cd ~/quran-renderer-deps/harfbuzz
+git pull origin justification
+
+# Update VisualMetaFont  
+cd ~/quran-renderer-deps/visualmetafont
+git pull origin main
+
+# Update Skia (then rebuild)
+cd ~/quran-renderer-deps/skia
+git pull
+python3 tools/git-sync-deps
+# Rebuild for all ABIs as shown above
+```
+
+---
+
+## Legacy: Building Skia Only
+
+If you only need to rebuild Skia:
 
 ```bash
 # Clone depot_tools
