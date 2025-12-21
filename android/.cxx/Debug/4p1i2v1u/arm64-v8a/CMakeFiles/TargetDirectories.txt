@@ -1,0 +1,3 @@
+/home/ali/Desktop/Projects/quran-renderer/android/.cxx/Debug/4p1i2v1u/arm64-v8a/CMakeFiles/quranrenderer.dir
+/home/ali/Desktop/Projects/quran-renderer/android/.cxx/Debug/4p1i2v1u/arm64-v8a/CMakeFiles/edit_cache.dir
+/home/ali/Desktop/Projects/quran-renderer/android/.cxx/Debug/4p1i2v1u/arm64-v8a/CMakeFiles/rebuild_cache.dir

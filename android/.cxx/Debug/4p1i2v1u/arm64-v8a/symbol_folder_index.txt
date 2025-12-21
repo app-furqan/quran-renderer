@@ -1,0 +1,1 @@
+/home/ali/Desktop/Projects/quran-renderer/android/build/intermediates/cxx/Debug/4p1i2v1u/obj/arm64-v8a
