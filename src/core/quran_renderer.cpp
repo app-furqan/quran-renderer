@@ -207,7 +207,7 @@ struct QuranRendererImpl {
         }
     }
     
-    void drawLine(QuranLine& lineText, skia_context_t* context, double lineWidth, bool justify, double scale) {
+    void drawLine(QuranLine& lineText, skia_context_t* context, double lineWidth, bool justify, double scale, hb_color_t defaultTextColor = HB_COLOR(0, 0, 0, 255)) {
         unsigned count = 0;
         hb_glyph_info_t* glyph_info = nullptr;
         hb_glyph_position_t* glyph_pos = nullptr;
@@ -301,7 +301,7 @@ struct QuranRendererImpl {
             // If using DigitalKhattV2 and need tajweed colors, implement the regex patterns from:
             // https://github.com/DigitalKhatt/digitalkhatt.org/blob/master/ClientApp/src/app/services/tajweed.service.ts
             
-            auto color = HB_COLOR(0, 0, 0, 255); // Default black
+            auto color = defaultTextColor; // Use computed text color based on background
             if (tajweed && glyph_pos[i].base_codepoint != 0) {
                 // Check if base_codepoint contains color data (non-zero RGB values)
                 uint8_t r = (glyph_pos[i].base_codepoint >> 8) & 0xff;
@@ -331,14 +331,19 @@ struct QuranRendererImpl {
         auto canvas = SkCanvas::MakeRasterDirect(imageInfo, pixels, stride);
         
         // Extract RGBA components from backgroundColor (0xRRGGBBAA format)
-        uint8_t r = (backgroundColor >> 24) & 0xFF;
-        uint8_t g = (backgroundColor >> 16) & 0xFF;
-        uint8_t b = (backgroundColor >> 8) & 0xFF;
-        uint8_t a = backgroundColor & 0xFF;
-        canvas->drawColor(SkColorSetARGB(a, r, g, b));
+        uint8_t bg_r = (backgroundColor >> 24) & 0xFF;
+        uint8_t bg_g = (backgroundColor >> 16) & 0xFF;
+        uint8_t bg_b = (backgroundColor >> 8) & 0xFF;
+        uint8_t bg_a = backgroundColor & 0xFF;
+        canvas->drawColor(SkColorSetARGB(bg_a, bg_r, bg_g, bg_b));
+        
+        // Calculate luminance to determine text color (ITU-R BT.709 formula)
+        // Luminance = 0.2126*R + 0.7152*G + 0.0722*B
+        double luminance = (0.2126 * bg_r + 0.7152 * bg_g + 0.0722 * bg_b) / 255.0;
+        hb_color_t textColor = luminance > 0.5 ? HB_COLOR(0, 0, 0, 255) : HB_COLOR(255, 255, 255, 255);
         
         SkPaint paint;
-        paint.setColor(SK_ColorBLACK);
+        paint.setColor(luminance > 0.5 ? SK_ColorBLACK : SK_ColorWHITE);
         paint.setAntiAlias(true);
         paint.setStyle(SkPaint::kFill_Style);
         
@@ -392,7 +397,7 @@ struct QuranRendererImpl {
             canvas->scale(scale, -scale);
             
             auto& linetext = pageText[lineIndex];
-            drawLine(linetext, &context, lineWidth, justify, scale);
+            drawLine(linetext, &context, lineWidth, justify, scale, textColor);
         }
     }
     
