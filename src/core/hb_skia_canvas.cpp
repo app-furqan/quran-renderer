@@ -139,23 +139,17 @@ hb_skia_paint_color (hb_paint_funcs_t *pfuncs HB_UNUSED,
 {
     skia_context_t *c = (skia_context_t *) paint_data;
     
-    // use_foreground=true: Use the foreground color (for regular text, ayah numbers)
-    // use_foreground=false: Use the COLR palette color (for tajweed colors) - NEVER change these
-    hb_color_t final_color;
-    
-    if (use_foreground) {
-        // Regular text, ayah markers - use computed foreground based on background
-        final_color = c->foreground;
-    } else {
-        // COLR palette color (tajweed) - preserve original color from font
-        final_color = color;
-    }
+    // The 'color' parameter contains:
+    // - When use_foreground=true: the foreground color passed to hb_font_paint_glyph 
+    //   (this is already our computed text color or tajweed color)
+    // - When use_foreground=false: COLR palette color from the font
+    // In both cases, just use 'color' directly - it's already correct
     
     c->paint->setColor(SkColorSetARGB(
-        hb_color_get_alpha(final_color), 
-        hb_color_get_red(final_color), 
-        hb_color_get_green(final_color), 
-        hb_color_get_blue(final_color)
+        hb_color_get_alpha(color), 
+        hb_color_get_red(color), 
+        hb_color_get_green(color), 
+        hb_color_get_blue(color)
     ));
     c->canvas->drawPath(c->path, *c->paint);
 }
