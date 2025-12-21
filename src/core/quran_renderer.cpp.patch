@@ -1,0 +1,20 @@
+--- a/src/core/quran_renderer.cpp
++++ b/src/core/quran_renderer.cpp
+@@ -298,6 +298,9 @@ struct QuranRendererImpl {
+     }
+     
+     void drawPage(void* pixels, int width, int height, int stride, int pageIndex, bool justify, float fontScale = 1.0f) {
++        fprintf(stderr, "drawPage: page=%d, size=%dx%d, stride=%d, fontScale=%.2f\n", 
++                pageIndex, width, height, stride, fontScale);
++        fprintf(stderr, "drawPage: pages.size()=%zu, upem=%u\n", pages.size(), upem);
+         SkImageInfo imageInfo = SkImageInfo::MakeN32Premul(width, height);
+         auto canvas = SkCanvas::MakeRasterDirect(imageInfo, pixels, stride);
+         
+@@ -315,6 +318,7 @@ struct QuranRendererImpl {
+         int y_start = inter_line * 0.72 + (inter_line * (1.0f - clampedScale) * 0.3f);
+         int x_padding = width / 42.5;
+         
++        fprintf(stderr, "drawPage: pageText.size()=%zu\n", pages[pageIndex].size());
+         double scale = (double)char_height / upem;
+         int x_start = width - x_padding;
+         double pageWidth = (width - 2 * x_padding) / scale;

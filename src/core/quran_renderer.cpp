@@ -299,7 +299,7 @@ struct QuranRendererImpl {
     }
     
     void drawPage(void* pixels, int width, int height, int stride, int pageIndex, bool justify, float fontScale = 1.0f) {
-        SkImageInfo imageInfo = SkImageInfo::MakeN32Premul(width, height);
+        SkImageInfo imageInfo = SkImageInfo::Make(width, height, kRGBA_8888_SkColorType, kPremul_SkAlphaType); // was Make(width, height, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
         auto canvas = SkCanvas::MakeRasterDirect(imageInfo, pixels, stride);
         
         canvas->drawColor(SK_ColorWHITE);

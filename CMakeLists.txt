@@ -12,10 +12,15 @@ endif()
 option(BUILD_SHARED_LIBS "Build shared library" ON)
 option(BUILD_ANDROID "Build for Android" OFF)
 
-# Source files
+# Quran text data path (required)
+set(QURAN_TEXT_DIR "/home/ali/Desktop/Projects/mushaf-android/libs/visualmetafont/src/qurantext" CACHE PATH "Path to qurantext source directory")
+
+# Source files - include quran text sources
 set(CORE_SOURCES
     src/core/quran_renderer.cpp
     src/core/hb_skia_canvas.cpp
+    ${QURAN_TEXT_DIR}/quran.cpp
+    ${QURAN_TEXT_DIR}/surahs.cpp
 )
 
 # Headers
@@ -32,22 +37,29 @@ target_include_directories(quran_renderer
         $<INSTALL_INTERFACE:include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+        ${QURAN_TEXT_DIR}
 )
 
-# HarfBuzz dependency
+# HarfBuzz dependency (link statically to include custom justify functions)
 if(HARFBUZZ_INCLUDE_DIR AND HARFBUZZ_LIBRARY_DIR)
     target_include_directories(quran_renderer PRIVATE
         ${HARFBUZZ_INCLUDE_DIR}
         ${HARFBUZZ_INCLUDE_DIR}/src
     )
-    target_link_directories(quran_renderer PRIVATE ${HARFBUZZ_LIBRARY_DIR})
-    target_link_libraries(quran_renderer PRIVATE harfbuzz)
+    
+    # Use static library if available, otherwise shared
+    if(EXISTS "${HARFBUZZ_LIBRARY_DIR}/libharfbuzz.a")
+        target_link_libraries(quran_renderer PRIVATE "${HARFBUZZ_LIBRARY_DIR}/libharfbuzz.a")
+    else()
+        target_link_directories(quran_renderer PRIVATE ${HARFBUZZ_LIBRARY_DIR})
+        target_link_libraries(quran_renderer PRIVATE harfbuzz)
+    endif()
 else()
     find_package(harfbuzz REQUIRED)
     target_link_libraries(quran_renderer PRIVATE harfbuzz::harfbuzz)
 endif()
 
-# Skia dependency
+# Skia dependency (link statically)
 if(SKIA_INCLUDE_DIR AND SKIA_LIBRARY_DIR)
     target_include_directories(quran_renderer PRIVATE 
         ${SKIA_INCLUDE_DIR}
@@ -58,18 +70,24 @@ if(SKIA_INCLUDE_DIR AND SKIA_LIBRARY_DIR)
         ${SKIA_INCLUDE_DIR}/src/core
         ${SKIA_INCLUDE_DIR}/src/base
     )
-    target_link_directories(quran_renderer PRIVATE ${SKIA_LIBRARY_DIR})
-    target_link_libraries(quran_renderer PRIVATE skia)
+    
+    # Use static library if available
+    if(EXISTS "${SKIA_LIBRARY_DIR}/libskia.a")
+        target_link_libraries(quran_renderer PRIVATE "${SKIA_LIBRARY_DIR}/libskia.a")
+    else()
+        target_link_directories(quran_renderer PRIVATE ${SKIA_LIBRARY_DIR})
+        target_link_libraries(quran_renderer PRIVATE skia)
+    endif()
 else()
     find_package(skia REQUIRED)
     target_link_libraries(quran_renderer PRIVATE skia::skia)
 endif()
 
-# Quran text data (from visualmetafont)
-if(QURAN_TEXT_DIR)
-    target_include_directories(quran_renderer PRIVATE ${QURAN_TEXT_DIR})
-    # The quran.cpp needs to be linked/compiled separately
-endif()
+# Additional libraries that Skia may need
+target_link_libraries(quran_renderer PRIVATE
+    pthread
+    dl
+)
 
 # Set output name
 set_target_properties(quran_renderer PROPERTIES
