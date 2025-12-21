@@ -1,4 +1,0 @@
-/home/ali/Android/Sdk/cmake/3.22.1/bin/ninja \
-  -C \
-  /home/ali/Desktop/Projects/quran-renderer/android/.cxx/Debug/4p1i2v1u/arm64-v8a \
-  quranrenderer

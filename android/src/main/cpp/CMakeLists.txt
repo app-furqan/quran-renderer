@@ -90,15 +90,16 @@ add_library(quranrenderer SHARED
     ${ANDROID_FILES}
 )
 
-# Skia as imported library
-add_library(skia SHARED IMPORTED)
+# Skia as imported static library
+add_library(skia STATIC IMPORTED)
 set_target_properties(skia PROPERTIES 
-    IMPORTED_LOCATION "${SKIA_DIR}/out/${ANDROID_ABI}/libskia.so"
+    IMPORTED_LOCATION "${SKIA_DIR}/${ANDROID_ABI}/libskia.a"
 )
+# Include paths: include_root for Skia internal headers, include/core for direct SkXxx.h includes
 target_include_directories(skia INTERFACE 
-    ${SKIA_DIR} 
-    ${SKIA_DIR}/include/config 
-    ${SKIA_DIR}/include/core
+    ${SKIA_DIR}/include_root
+    ${SKIA_DIR}/include_root/include/core
+    ${SKIA_DIR}/include_root/include/config
 )
 
 # Compiler definitions
@@ -118,11 +119,18 @@ target_include_directories(quranrenderer PRIVATE
 find_library(log-lib log)
 find_library(android-lib android)
 find_library(jnigraphics-lib jnigraphics)
+find_library(GLESv2-lib GLESv2)
+find_library(EGL-lib EGL)
+find_library(z-lib z)
 
 # Link libraries
+# Note: skia must come before GL libs since it depends on them
 target_link_libraries(quranrenderer
     ${log-lib}
     ${android-lib}
     ${jnigraphics-lib}
     skia
+    ${GLESv2-lib}
+    ${EGL-lib}
+    ${z-lib}
 )

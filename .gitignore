@@ -1,0 +1,33 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android build outputs
+android/build/
+android/.cxx/
+
+# Local configuration (contains user-specific paths)
+local.properties
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Native build
+*.o
+*.so
+*.a
+*.dylib
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Logs
+*.log
