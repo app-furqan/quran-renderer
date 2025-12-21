@@ -51,6 +51,8 @@ typedef struct {
     float fontScale;    // Font scale factor (1.0 = default, 0.8-1.2 recommended) - DEPRECATED, use fontSize
     uint32_t backgroundColor; // Background color in RGBA format (0xRRGGBBAA, default: 0xFFFFFFFF for white)
     int fontSize;       // Font size in pixels (0 = auto-fit to screen, >0 = fixed size with proportional line height)
+    bool useForegroundOverride; // If true, override foreground color for non-COLR glyphs based on background
+    uint32_t textColor; // Text color in RGBA format (0xRRGGBBAA), used when useForegroundOverride=true
 } QuranRenderConfig;
 
 /**

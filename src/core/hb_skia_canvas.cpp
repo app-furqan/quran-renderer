@@ -139,27 +139,9 @@ hb_skia_paint_color (hb_paint_funcs_t *pfuncs HB_UNUSED,
 {
     skia_context_t *c = (skia_context_t *) paint_data;
     
-    hb_color_t final_color;
-    
-    if (use_foreground) {
-        // HarfBuzz says "use foreground" - this is for regular text and parts of COLR
-        // glyphs that should match text color. Use our computed foreground.
-        final_color = c->foreground;
-    } else {
-        // Explicit color from COLR palette (tajweed colors)
-        // Check if this is black (0,0,0) - if so and we have dark bg, use foreground instead
-        uint8_t r = hb_color_get_red(color);
-        uint8_t g = hb_color_get_green(color);
-        uint8_t b = hb_color_get_blue(color);
-        
-        // If color is very dark (near black), substitute with foreground for visibility
-        if (r < 30 && g < 30 && b < 30) {
-            final_color = c->foreground;
-        } else {
-            // Keep the COLR color (tajweed colors like blue, orange, etc.)
-            final_color = color;
-        }
-    }
+    // use_foreground: if true and c->use_foreground_override is set, use c->foreground
+    // otherwise use the color from COLR/passed in
+    hb_color_t final_color = (use_foreground && c->use_foreground_override) ? c->foreground : color;
     
     c->paint->setColor(SkColorSetARGB(
         hb_color_get_alpha(final_color), 

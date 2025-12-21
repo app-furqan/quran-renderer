@@ -14,7 +14,8 @@ typedef struct
     SkCanvas *canvas;
     SkPath path;
     SkPaint * paint;
-    hb_color_t foreground;  // Foreground color for text (used when COLR says use_foreground)
+    hb_color_t foreground;          // Foreground color for text
+    bool use_foreground_override;   // If true, use foreground when use_foreground=true in callback
 } skia_context_t;
 
 void hb_skia_paint_glyph (hb_font_t *font,
