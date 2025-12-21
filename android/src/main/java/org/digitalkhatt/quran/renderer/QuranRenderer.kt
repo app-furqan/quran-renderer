@@ -5,14 +5,19 @@ import android.graphics.Bitmap
 
 /**
  * Available DigitalKhatt font styles.
+ * 
+ * Note: Only MADINA_QURANIC includes tajweed coloring (COLR/CPAL tables).
+ * Other fonts render in black without tajweed highlighting.
  */
-enum class QuranFont(val assetPath: String, val displayName: String) {
-    /** New Madina Mushaf style */
-    MADINA("fonts/madina.otf", "Madina"),
-    /** Old Madina Mushaf style (based on older printing) */
-    OLD_MADINA("fonts/oldmadina.otf", "Old Madina"),
-    /** IndoPak 13-line Mushaf style */
-    INDOPAK("fonts/indopak.otf", "IndoPak")
+enum class QuranFont(val assetPath: String, val displayName: String, val hasTajweed: Boolean) {
+    /** Madina Quranic style with tajweed coloring (default) */
+    MADINA_QURANIC("fonts/digitalkhatt.otf", "Madina Quranic", true),
+    /** New Madina style (no tajweed coloring) */
+    MADINA("fonts/madina.otf", "New Madina", false),
+    /** Old Madina Mushaf style (no tajweed coloring) */
+    OLD_MADINA("fonts/oldmadina.otf", "Old Madina", false),
+    /** IndoPak 13-line Mushaf style (no tajweed coloring) */
+    INDOPAK("fonts/indopak.otf", "IndoPak", false)
 }
 
 /**
@@ -21,18 +26,19 @@ enum class QuranFont(val assetPath: String, val displayName: String) {
  * Uses custom HarfBuzz (with justification support) and Skia
  * for professional-grade Arabic text layout and tajweed coloring.
  * 
- * Supports three font styles:
- * - MADINA: New Madina Mushaf style (default)
- * - OLD_MADINA: Old Madina Mushaf style
- * - INDOPAK: IndoPak 13-line Mushaf style
+ * Supports four font styles:
+ * - MADINA_QURANIC: Madina style with tajweed coloring (default, recommended)
+ * - MADINA: New Madina style (no tajweed)
+ * - OLD_MADINA: Old Madina Mushaf style (no tajweed)
+ * - INDOPAK: IndoPak 13-line Mushaf style (no tajweed)
  * 
  * Example usage:
  * ```kotlin
  * val renderer = QuranRenderer.getInstance()
- * renderer.initialize(assets, QuranFont.MADINA)
+ * renderer.initialize(assets, QuranFont.MADINA_QURANIC)
  * 
- * // Switch to Old Madina style
- * renderer.setFont(assets, QuranFont.OLD_MADINA)
+ * // Switch to IndoPak style (no tajweed colors)
+ * renderer.setFont(assets, QuranFont.INDOPAK)
  * ```
  */
 class QuranRenderer private constructor() {
@@ -63,10 +69,10 @@ class QuranRenderer private constructor() {
      * Initialize the renderer with a font style.
      * 
      * @param assetManager Android AssetManager
-     * @param font QuranFont style to use (default: MADINA)
+     * @param font QuranFont style to use (default: MADINA_QURANIC with tajweed)
      * @return true if initialization succeeded
      */
-    fun initialize(assetManager: AssetManager, font: QuranFont = QuranFont.MADINA): Boolean {
+    fun initialize(assetManager: AssetManager, font: QuranFont = QuranFont.MADINA_QURANIC): Boolean {
         if (initialized) return true
         initialized = nativeInit(assetManager, font.assetPath)
         if (initialized) {
