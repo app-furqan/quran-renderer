@@ -326,7 +326,7 @@ struct QuranRendererImpl {
         hb_buffer_destroy(buffer);
     }
     
-    void drawPage(void* pixels, int width, int height, int stride, int pageIndex, bool justify, float fontScale = 1.0f, uint32_t backgroundColor = 0xFFFFFFFF) {
+    void drawPage(void* pixels, int width, int height, int stride, int pageIndex, bool justify, float fontScale = 1.0f, uint32_t backgroundColor = 0xFFFFFFFF, int fontSize = 0) {
         SkImageInfo imageInfo = SkImageInfo::Make(width, height, kRGBA_8888_SkColorType, kPremul_SkAlphaType); // was Make(width, height, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
         auto canvas = SkCanvas::MakeRasterDirect(imageInfo, pixels, stride);
         
@@ -354,23 +354,33 @@ struct QuranRendererImpl {
         
         auto& pageText = pages[pageIndex];
         
-        // Apply font scale factor (clamp to reasonable range)
-        float clampedScale = std::max(0.5f, std::min(2.0f, fontScale));
-        
-        // Dynamic font size calculation based on both width and height
-        // This ensures proper scaling across different screen sizes and aspect ratios
-        int inter_line = height / 15;
+        // Font size and line height calculation
+        int char_height;
+        int inter_line;
         int x_padding = width / 42.5;
         
-        // Calculate char_height from the smaller of the two constraints:
-        // 1. Based on width (horizontal constraint)
-        // 2. Based on height/line spacing (vertical constraint)
-        int char_height_from_width = (width / 17) * 0.9;
-        int char_height_from_height = inter_line * 0.85; // Leave some spacing between lines
-        
-        // Use the smaller value to ensure text fits in both dimensions
-        int char_height = std::min(char_height_from_width, char_height_from_height);
-        char_height = char_height * clampedScale;
+        if (fontSize > 0) {
+            // Use explicit font size with proportional line height
+            char_height = fontSize;
+            // Line height is ~1.18x font size (15 lines fit in ~17.7x font height)
+            inter_line = static_cast<int>(fontSize * 1.18);
+        } else {
+            // Auto-fit: Calculate based on screen dimensions
+            // Apply font scale factor (clamp to reasonable range)
+            float clampedScale = std::max(0.5f, std::min(2.0f, fontScale));
+            
+            inter_line = height / 15;
+            
+            // Calculate char_height from the smaller of the two constraints:
+            // 1. Based on width (horizontal constraint)
+            // 2. Based on height/line spacing (vertical constraint)
+            int char_height_from_width = (width / 17) * 0.9;
+            int char_height_from_height = inter_line * 0.85; // Leave some spacing between lines
+            
+            // Use the smaller value to ensure text fits in both dimensions
+            char_height = std::min(char_height_from_width, char_height_from_height);
+            char_height = char_height * clampedScale;
+        }
         
         // y_start should account for the character height since text renders upward from baseline
         // Add char_height to ensure text doesn't get cut off at top
@@ -449,7 +459,8 @@ void quran_renderer_draw_page(
         pageIndex,
         config ? config->justify : true,
         config ? config->fontScale : 1.0f,
-        config ? config->backgroundColor : 0xFFFFFFFF
+        config ? config->backgroundColor : 0xFFFFFFFF,
+        config ? config->fontSize : 0
     );
 }
 
