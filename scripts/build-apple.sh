@@ -417,6 +417,12 @@ build_library_platform() {
     cmake "$PROJECT_DIR" "${CMAKE_ARGS[@]}"
     ninja
     
+    # Copy individual arch build to platform directory for packaging
+    if [[ "$PLATFORM" == "macos" ]]; then
+        mkdir -p "$OUTPUT_DIR/macos/lib"
+        cp libquranrenderer.a "$OUTPUT_DIR/macos/lib/" 2>/dev/null || true
+    fi
+    
     log_success "Built quran-renderer for $PLATFORM-$ARCH"
 }
 
@@ -429,16 +435,16 @@ create_fat_library() {
     log_info "Creating fat library for $PLATFORM..."
     
     local FAT_DIR="$OUTPUT_DIR/$PLATFORM"
-    mkdir -p "$FAT_DIR"
+    mkdir -p "$FAT_DIR/lib"
     
     local LIPO_ARGS=()
     for ARCH in "${ARCHS[@]}"; do
         LIPO_ARGS+=("$OUTPUT_DIR/build-$PLATFORM-$ARCH/libquranrenderer.a")
     done
     
-    lipo -create "${LIPO_ARGS[@]}" -output "$FAT_DIR/libquranrenderer.a"
+    lipo -create "${LIPO_ARGS[@]}" -output "$FAT_DIR/lib/libquranrenderer.a"
     
-    log_success "Fat library created: $FAT_DIR/libquranrenderer.a"
+    log_success "Fat library created: $FAT_DIR/lib/libquranrenderer.a"
 }
 
 # Create XCFramework
@@ -452,20 +458,20 @@ create_xcframework() {
     local FRAMEWORK_ARGS=()
     
     # iOS device
-    if [[ -f "$OUTPUT_DIR/ios/libquranrenderer.a" ]]; then
-        FRAMEWORK_ARGS+=(-library "$OUTPUT_DIR/ios/libquranrenderer.a")
+    if [[ -f "$OUTPUT_DIR/ios/lib/libquranrenderer.a" ]]; then
+        FRAMEWORK_ARGS+=(-library "$OUTPUT_DIR/ios/lib/libquranrenderer.a")
         FRAMEWORK_ARGS+=(-headers "$PROJECT_DIR/include")
     fi
     
     # iOS simulator
-    if [[ -f "$OUTPUT_DIR/ios-simulator/libquranrenderer.a" ]]; then
-        FRAMEWORK_ARGS+=(-library "$OUTPUT_DIR/ios-simulator/libquranrenderer.a")
+    if [[ -f "$OUTPUT_DIR/ios-simulator/lib/libquranrenderer.a" ]]; then
+        FRAMEWORK_ARGS+=(-library "$OUTPUT_DIR/ios-simulator/lib/libquranrenderer.a")
         FRAMEWORK_ARGS+=(-headers "$PROJECT_DIR/include")
     fi
     
     # macOS
-    if [[ -f "$OUTPUT_DIR/macos/libquranrenderer.a" ]]; then
-        FRAMEWORK_ARGS+=(-library "$OUTPUT_DIR/macos/libquranrenderer.a")
+    if [[ -f "$OUTPUT_DIR/macos/lib/libquranrenderer.a" ]]; then
+        FRAMEWORK_ARGS+=(-library "$OUTPUT_DIR/macos/lib/libquranrenderer.a")
         FRAMEWORK_ARGS+=(-headers "$PROJECT_DIR/include")
     fi
     

@@ -113,9 +113,9 @@ jobs:
       - name: Package macOS artifacts
         run: |
           mkdir -p release/macos
-          cp build/apple/macos/lib/libquranrenderer.dylib release/macos/
-          cp -r build/apple/macos/include release/macos/
-          cp -r build/apple/macos/fonts release/macos/ 2>/dev/null || true
+          cp build/apple/macos/lib/libquranrenderer.a release/macos/
+          cp -r build/apple/include release/macos/ 2>/dev/null || cp -r include release/macos/
+          cp -r build/apple/fonts release/macos/ 2>/dev/null || true
           cd release && zip -r quran-renderer-macos-universal.zip macos
 
       - name: Upload macOS artifact

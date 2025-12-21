@@ -30,6 +30,7 @@
 #include <hb.h>
 #include <hb-buffer.hh>
 #include <hb-font.hh>
+#include <hb-ot.h>
 
 #pragma GCC diagnostic pop
 
@@ -76,7 +77,7 @@ struct QuranRendererImpl {
     std::unordered_map<int, float> lineWidths;
     
     bool tajweed = true;
-    int tajweedcolorindex = 152;
+    unsigned int tajweedcolorindex = 0xFFFF;
     hb_feature_t features[1];
     int coords[2];
     
@@ -138,6 +139,17 @@ struct QuranRendererImpl {
         
         draw_funcs = hb_skia_draw_get_funcs();
         paint_funcs = hb_skia_paint_get_funcs();
+        
+        // Get tajweed color index from GPOS lookup table
+        // For DigitalKhatt/Madina fonts, tajweed lookups start around index 150-160
+        // We use the lookup count to determine if this font has tajweed support
+        unsigned int gpos_lookup_count = hb_ot_layout_table_get_lookup_count(face, HB_OT_TAG_GPOS);
+        if (gpos_lookup_count > 150) {
+            // Font likely has tajweed support, use index 152 as default
+            // This corresponds to the 'green' color lookup in DigitalKhatt fonts
+            tajweedcolorindex = 152;
+        }
+        // If lookup count is less, keep default 0xFFFF (disabled)
         
         return true;
     }
