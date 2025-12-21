@@ -293,9 +293,13 @@ Options:
 
 ## Usage
 
-### Android (Kotlin)
+### Android
 
-#### Basic Usage
+#### Option 1: Using AAR (Kotlin API)
+
+If you're using the AAR built with Gradle (includes Kotlin wrapper):
+
+##### Basic Usage
 
 ```kotlin
 import org.digitalkhatt.quran.renderer.QuranRenderer
@@ -451,6 +455,287 @@ location?.let {
 // Build a surah list
 val surahList = (1..114).mapNotNull { renderer.getSurahInfo(it) }
 ```
+
+---
+
+#### Option 2: Using Standalone .so Files (C API via JNI)
+
+If you're using the standalone self-contained `.so` files (from `build/final-output/`):
+
+##### Step 1: Add .so files to your Android project
+
+```
+app/src/main/jniLibs/
+├── arm64-v8a/
+│   └── libquranrenderer.so
+├── armeabi-v7a/
+│   └── libquranrenderer.so
+└── x86_64/
+    └── libquranrenderer.so
+```
+
+##### Step 2: Create JNI wrapper (Kotlin)
+
+```kotlin
+// File: QuranRendererJNI.kt
+package com.yourapp.quran
+
+import android.content.res.AssetManager
+import android.graphics.Bitmap
+import java.nio.ByteBuffer
+
+class QuranRendererJNI private constructor() {
+    private var nativeHandle: Long = 0
+    
+    companion object {
+        init {
+            System.loadLibrary("quranrenderer")
+        }
+        
+        @Volatile
+        private var instance: QuranRendererJNI? = null
+        
+        fun getInstance(): QuranRendererJNI {
+            return instance ?: synchronized(this) {
+                instance ?: QuranRendererJNI().also { instance = it }
+            }
+        }
+    }
+    
+    fun initialize(assets: AssetManager, fontPath: String = "fonts/digitalkhatt.otf"): Boolean {
+        if (nativeHandle != 0L) {
+            nativeDestroy(nativeHandle)
+        }
+        
+        // Load font from assets
+        val fontData = assets.open(fontPath).use { it.readBytes() }
+        nativeHandle = nativeCreate(fontData, fontData.size)
+        
+        return nativeHandle != 0L
+    }
+    
+    fun renderPage(width: Int, height: Int, pageIndex: Int, 
+                   tajweed: Boolean = true, justify: Boolean = true, 
+                   fontScale: Float = 1.0f): Bitmap? {
+        if (nativeHandle == 0L) return null
+        
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val buffer = ByteBuffer.allocateDirect(width * height * 4)
+        
+        if (nativeDrawPage(nativeHandle, buffer, width, height, width * 4, 
+                          pageIndex, tajweed, justify, fontScale)) {
+            bitmap.copyPixelsFromBuffer(buffer)
+            return bitmap
+        }
+        
+        return null
+    }
+    
+    fun drawPage(bitmap: Bitmap, pageIndex: Int, 
+                 tajweed: Boolean = true, justify: Boolean = true,
+                 fontScale: Float = 1.0f): Boolean {
+        if (nativeHandle == 0L) return false
+        
+        val buffer = ByteBuffer.allocateDirect(bitmap.width * bitmap.height * 4)
+        
+        val result = nativeDrawPage(nativeHandle, buffer, bitmap.width, bitmap.height,
+                                   bitmap.width * 4, pageIndex, tajweed, justify, fontScale)
+        
+        if (result) {
+            buffer.rewind()
+            bitmap.copyPixelsFromBuffer(buffer)
+        }
+        
+        return result
+    }
+    
+    val pageCount: Int
+        get() = if (nativeHandle != 0L) nativeGetPageCount(nativeHandle) else 0
+    
+    // Surah/Ayah API (static - doesn't need renderer instance)
+    fun getSurahCount(): Int = nativeGetSurahCount()
+    fun getTotalAyahCount(): Int = nativeGetTotalAyahCount()
+    fun getSurahStartPage(surahNumber: Int): Int = nativeGetSurahStartPage(surahNumber)
+    fun getAyahPage(surah: Int, ayah: Int): Int = nativeGetAyahPage(surah, ayah)
+    
+    fun destroy() {
+        if (nativeHandle != 0L) {
+            nativeDestroy(nativeHandle)
+            nativeHandle = 0
+        }
+    }
+    
+    // Native methods
+    private external fun nativeCreate(fontData: ByteArray, size: Int): Long
+    private external fun nativeDestroy(handle: Long)
+    private external fun nativeDrawPage(handle: Long, buffer: ByteBuffer,
+                                       width: Int, height: Int, stride: Int,
+                                       pageIndex: Int, tajweed: Boolean,
+                                       justify: Boolean, fontScale: Float): Boolean
+    private external fun nativeGetPageCount(handle: Long): Int
+    
+    // Static native methods (no handle needed)
+    private external fun nativeGetSurahCount(): Int
+    private external fun nativeGetTotalAyahCount(): Int
+    private external fun nativeGetSurahStartPage(surahNumber: Int): Int
+    private external fun nativeGetAyahPage(surah: Int, ayah: Int): Int
+}
+```
+
+##### Step 3: Implement JNI methods (C++)
+
+```cpp
+// File: app/src/main/cpp/quran_jni.cpp
+#include <jni.h>
+#include <quran/renderer.h>
+#include <android/log.h>
+
+#define LOG_TAG "QuranJNI"
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+
+extern "C" {
+
+JNIEXPORT jlong JNICALL
+Java_com_yourapp_quran_QuranRendererJNI_nativeCreate(JNIEnv* env, jobject, 
+                                                     jbyteArray fontData, jint size) {
+    jbyte* data = env->GetByteArrayElements(fontData, nullptr);
+    
+    QuranFontData font = {
+        .data = (const uint8_t*)data,
+        .size = (size_t)size
+    };
+    
+    QuranRendererHandle handle = quran_renderer_create(&font);
+    
+    env->ReleaseByteArrayElements(fontData, data, JNI_ABORT);
+    
+    return (jlong)handle;
+}
+
+JNIEXPORT void JNICALL
+Java_com_yourapp_quran_QuranRendererJNI_nativeDestroy(JNIEnv*, jobject, jlong handle) {
+    quran_renderer_destroy((QuranRendererHandle)handle);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_yourapp_quran_QuranRendererJNI_nativeDrawPage(JNIEnv* env, jobject,
+                                                       jlong handle, jobject buffer,
+                                                       jint width, jint height, jint stride,
+                                                       jint pageIndex, jboolean tajweed,
+                                                       jboolean justify, jfloat fontScale) {
+    void* pixels = env->GetDirectBufferAddress(buffer);
+    
+    if (!pixels) {
+        LOGE("Failed to get buffer address");
+        return JNI_FALSE;
+    }
+    
+    QuranPixelBuffer pixelBuffer = {
+        .pixels = pixels,
+        .width = width,
+        .height = height,
+        .stride = stride,
+        .format = QURAN_PIXEL_FORMAT_RGBA8888
+    };
+    
+    QuranRenderConfig config = {
+        .tajweed = (bool)tajweed,
+        .justify = (bool)justify,
+        .fontScale = fontScale
+    };
+    
+    quran_renderer_draw_page((QuranRendererHandle)handle, &pixelBuffer, pageIndex, &config);
+    
+    return JNI_TRUE;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_yourapp_quran_QuranRendererJNI_nativeGetPageCount(JNIEnv*, jobject, jlong handle) {
+    return quran_renderer_get_page_count((QuranRendererHandle)handle);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_yourapp_quran_QuranRendererJNI_nativeGetSurahCount(JNIEnv*, jobject) {
+    return quran_renderer_get_surah_count();
+}
+
+JNIEXPORT jint JNICALL
+Java_com_yourapp_quran_QuranRendererJNI_nativeGetTotalAyahCount(JNIEnv*, jobject) {
+    return quran_renderer_get_total_ayah_count();
+}
+
+JNIEXPORT jint JNICALL
+Java_com_yourapp_quran_QuranRendererJNI_nativeGetSurahStartPage(JNIEnv*, jobject, jint surah) {
+    return quran_renderer_get_surah_start_page(surah);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_yourapp_quran_QuranRendererJNI_nativeGetAyahPage(JNIEnv*, jobject, jint surah, jint ayah) {
+    return quran_renderer_get_ayah_page(surah, ayah);
+}
+
+} // extern "C"
+```
+
+##### Step 4: Configure CMake (app/src/main/cpp/CMakeLists.txt)
+
+```cmake
+cmake_minimum_required(VERSION 3.22.1)
+project("quran_jni")
+
+# Add your JNI wrapper
+add_library(quran_jni SHARED quran_jni.cpp)
+
+# Link against the prebuilt libquranrenderer.so
+add_library(quranrenderer SHARED IMPORTED)
+set_target_properties(quranrenderer PROPERTIES
+    IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libquranrenderer.so
+)
+
+target_link_libraries(quran_jni
+    quranrenderer
+    android
+    log
+)
+```
+
+##### Step 5: Usage in your app
+
+```kotlin
+import com.yourapp.quran.QuranRendererJNI
+
+class QuranActivity : AppCompatActivity() {
+    private lateinit var renderer: QuranRendererJNI
+    
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        renderer = QuranRendererJNI.getInstance()
+        
+        // Initialize with font from assets
+        if (renderer.initialize(assets, "fonts/digitalkhatt.otf")) {
+            // Render page
+            val bitmap = renderer.renderPage(
+                width = 1080,
+                height = 1920,
+                pageIndex = 0,
+                tajweed = true,
+                justify = true,
+                fontScale = 1.0f
+            )
+            
+            imageView.setImageBitmap(bitmap)
+        }
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        renderer.destroy()
+    }
+}
+```
+
+> **Note:** The standalone .so files are self-contained with all dependencies statically linked. You only need to copy the .so files and implement the JNI wrapper shown above.
 
 ---
 
