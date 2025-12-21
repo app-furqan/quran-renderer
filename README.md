@@ -518,6 +518,254 @@ int main() {
 }
 ```
 
+#### Rendering Surah by Surah (C API)
+
+```c
+#include <quran/renderer.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+// Render all pages of a specific surah
+void render_surah(QuranRendererHandle renderer, QuranPixelBuffer* buffer, int surahNumber) {
+    // Get surah information
+    QuranSurahInfo info;
+    if (!quran_renderer_get_surah_info(surahNumber, &info)) {
+        fprintf(stderr, "Invalid surah number: %d\n", surahNumber);
+        return;
+    }
+    
+    printf("Rendering Surah %d: %s (%s)\n", info.number, info.nameEnglish, info.nameArabic);
+    printf("  Type: %s, Ayahs: %d, Revelation Order: %d\n", 
+           info.type, info.ayahCount, info.revelationOrder);
+    
+    // Find start and end pages for this surah
+    int startPage = quran_renderer_get_surah_start_page(surahNumber);
+    int endPage;
+    
+    if (surahNumber < 114) {
+        // Not the last surah - end page is just before next surah starts
+        endPage = quran_renderer_get_surah_start_page(surahNumber + 1) - 1;
+    } else {
+        // Last surah (An-Nas) - goes to page 603 (last page)
+        endPage = 603;
+    }
+    
+    printf("  Pages: %d to %d (%d pages total)\n", 
+           startPage + 1, endPage + 1, endPage - startPage + 1);
+    
+    // Render each page
+    QuranRenderConfig config = { .tajweed = true, .justify = true, .fontScale = 1.0f };
+    
+    for (int page = startPage; page <= endPage; page++) {
+        quran_renderer_draw_page(renderer, buffer, page, &config);
+        
+        // Save or process the rendered page
+        printf("  Rendered page %d\n", page + 1);
+        
+        // Example: Save to file
+        char filename[256];
+        snprintf(filename, sizeof(filename), "surah_%d_page_%d.rgba", surahNumber, page + 1);
+        FILE* out = fopen(filename, "wb");
+        fwrite(buffer->pixels, 1, buffer->height * buffer->stride, out);
+        fclose(out);
+    }
+    
+    printf("✅ Surah %d complete!\n\n", surahNumber);
+}
+
+// Example: Render multiple surahs
+int main() {
+    // ... (initialize renderer as shown above)
+    QuranRendererHandle renderer = /* ... */;
+    QuranPixelBuffer buffer = /* ... */;
+    
+    // Render Surah Al-Fatiha (1)
+    render_surah(renderer, &buffer, 1);
+    
+    // Render Surah Yaseen (36)
+    render_surah(renderer, &buffer, 36);
+    
+    // Render Surah Al-Mulk (67)
+    render_surah(renderer, &buffer, 67);
+    
+    // Render all surahs
+    for (int surah = 1; surah <= 114; surah++) {
+        render_surah(renderer, &buffer, surah);
+    }
+    
+    quran_renderer_destroy(renderer);
+    return 0;
+}
+```
+
+#### Rendering Ayah by Ayah (C API)
+
+```c
+#include <quran/renderer.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+// Render page containing a specific ayah
+void render_ayah(QuranRendererHandle renderer, QuranPixelBuffer* buffer, 
+                 int surahNumber, int ayahNumber) {
+    // Get the page containing this ayah
+    int pageIndex = quran_renderer_get_ayah_page(surahNumber, ayahNumber);
+    
+    if (pageIndex < 0) {
+        fprintf(stderr, "Invalid ayah: Surah %d, Ayah %d\n", surahNumber, ayahNumber);
+        return;
+    }
+    
+    // Get surah info for context
+    QuranSurahInfo info;
+    quran_renderer_get_surah_info(surahNumber, &info);
+    
+    printf("Rendering Surah %d (%s), Ayah %d\n", surahNumber, info.nameEnglish, ayahNumber);
+    printf("  Located on page %d\n", pageIndex + 1);
+    
+    // Render the page
+    QuranRenderConfig config = { .tajweed = true, .justify = true, .fontScale = 1.0f };
+    quran_renderer_draw_page(renderer, buffer, pageIndex, &config);
+    
+    // Save or display the page
+    char filename[256];
+    snprintf(filename, sizeof(filename), "surah_%d_ayah_%d_page_%d.rgba", 
+             surahNumber, ayahNumber, pageIndex + 1);
+    FILE* out = fopen(filename, "wb");
+    fwrite(buffer->pixels, 1, buffer->height * buffer->stride, out);
+    fclose(out);
+    
+    printf("✅ Rendered!\n\n");
+}
+
+// Render all ayahs of a surah (one page per ayah location)
+void render_surah_ayahs(QuranRendererHandle renderer, QuranPixelBuffer* buffer, int surahNumber) {
+    int ayahCount = quran_renderer_get_ayah_count(surahNumber);
+    
+    if (ayahCount < 0) {
+        fprintf(stderr, "Invalid surah: %d\n", surahNumber);
+        return;
+    }
+    
+    QuranSurahInfo info;
+    quran_renderer_get_surah_info(surahNumber, &info);
+    
+    printf("Rendering all ayahs of Surah %d: %s\n", surahNumber, info.nameEnglish);
+    printf("  Total ayahs: %d\n", ayahCount);
+    
+    int lastPage = -1;  // Track to avoid rendering same page multiple times
+    
+    for (int ayah = 1; ayah <= ayahCount; ayah++) {
+        int pageIndex = quran_renderer_get_ayah_page(surahNumber, ayah);
+        
+        // Only render if we've moved to a new page
+        if (pageIndex != lastPage) {
+            printf("  Ayah %d on page %d\n", ayah, pageIndex + 1);
+            
+            QuranRenderConfig config = { .tajweed = true, .justify = true, .fontScale = 1.0f };
+            quran_renderer_draw_page(renderer, buffer, pageIndex, &config);
+            
+            // Save page
+            char filename[256];
+            snprintf(filename, sizeof(filename), "surah_%d_page_%d.rgba", 
+                     surahNumber, pageIndex + 1);
+            FILE* out = fopen(filename, "wb");
+            fwrite(buffer->pixels, 1, buffer->height * buffer->stride, out);
+            fclose(out);
+            
+            lastPage = pageIndex;
+        }
+    }
+    
+    printf("✅ Complete!\n\n");
+}
+
+// Example usage
+int main() {
+    // ... (initialize renderer)
+    QuranRendererHandle renderer = /* ... */;
+    QuranPixelBuffer buffer = /* ... */;
+    
+    // Render specific ayahs
+    render_ayah(renderer, &buffer, 2, 255);   // Ayat al-Kursi
+    render_ayah(renderer, &buffer, 18, 10);   // Surah Al-Kahf, Ayah 10
+    render_ayah(renderer, &buffer, 36, 1);    // Surah Yaseen, start
+    
+    // Render all ayahs of a surah (generates one page per unique page location)
+    render_surah_ayahs(renderer, &buffer, 1);   // Al-Fatiha
+    render_surah_ayahs(renderer, &buffer, 112); // Al-Ikhlas
+    
+    quran_renderer_destroy(renderer);
+    return 0;
+}
+```
+
+#### Complete Navigation Example (C API)
+
+```c
+#include <quran/renderer.h>
+#include <stdio.h>
+
+void explore_quran() {
+    // Get basic statistics
+    int totalSurahs = quran_renderer_get_surah_count();     // 114
+    int totalAyahs = quran_renderer_get_total_ayah_count(); // 6236
+    int totalPages = 604;
+    
+    printf("=== Quran Statistics ===\n");
+    printf("Surahs: %d\n", totalSurahs);
+    printf("Ayahs: %d\n", totalAyahs);
+    printf("Pages: %d\n\n", totalPages);
+    
+    // List all surahs with their locations
+    printf("=== All Surahs ===\n");
+    for (int i = 1; i <= totalSurahs; i++) {
+        QuranSurahInfo info;
+        if (quran_renderer_get_surah_info(i, &info)) {
+            int startPage = quran_renderer_get_surah_start_page(i);
+            printf("%3d. %-20s %-30s (%-7s) - %3d ayahs, page %3d\n",
+                   info.number, info.nameEnglish, info.nameArabic, 
+                   info.type, info.ayahCount, startPage + 1);
+        }
+    }
+    
+    // Find famous ayahs
+    printf("\n=== Famous Ayahs ===\n");
+    
+    struct { int surah; int ayah; const char* name; } famous[] = {
+        {2, 255, "Ayat al-Kursi"},
+        {18, 10, "Cave Sleepers"},
+        {36, 1, "Yaseen Opening"},
+        {55, 13, "Which favors"},
+        {112, 1, "Surah Al-Ikhlas"}
+    };
+    
+    for (int i = 0; i < 5; i++) {
+        int page = quran_renderer_get_ayah_page(famous[i].surah, famous[i].ayah);
+        printf("%-20s - Surah %3d, Ayah %3d → Page %3d\n", 
+               famous[i].name, famous[i].surah, famous[i].ayah, page + 1);
+    }
+    
+    // Show what's on specific pages
+    printf("\n=== Page Locations ===\n");
+    int pages[] = {1, 50, 100, 200, 300, 400, 500, 604};
+    for (int i = 0; i < 8; i++) {
+        QuranAyahLocation loc;
+        if (quran_renderer_get_page_location(pages[i] - 1, &loc)) {
+            QuranSurahInfo info;
+            quran_renderer_get_surah_info(loc.surahNumber, &info);
+            printf("Page %3d starts at: Surah %3d (%s), Ayah %3d\n",
+                   pages[i], loc.surahNumber, info.nameEnglish, loc.ayahNumber);
+        }
+    }
+}
+
+int main() {
+    explore_quran();
+    return 0;
+}
+```
+
 #### Swift Usage (iOS/macOS)
 
 ```swift
