@@ -326,7 +326,7 @@ struct QuranRendererImpl {
         hb_buffer_destroy(buffer);
     }
     
-    void drawPage(void* pixels, int width, int height, int stride, int pageIndex, bool justify, float fontScale = 1.0f, uint32_t backgroundColor = 0xFFFFFFFF, int fontSize = 0, bool useForegroundOverride = false, uint32_t textColorParam = 0x000000FF) {
+    void drawPage(void* pixels, int width, int height, int stride, int pageIndex, bool justify, float fontScale = 1.0f, uint32_t backgroundColor = 0xFFFFFFFF, int fontSize = 0, bool useForeground = false) {
         SkImageInfo imageInfo = SkImageInfo::Make(width, height, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
         auto canvas = SkCanvas::MakeRasterDirect(imageInfo, pixels, stride);
         
@@ -337,29 +337,16 @@ struct QuranRendererImpl {
         uint8_t bg_a = backgroundColor & 0xFF;
         canvas->drawColor(SkColorSetARGB(bg_a, bg_r, bg_g, bg_b));
         
-        // Text color: use provided textColor if useForegroundOverride, otherwise calculate from bg
-        hb_color_t textColor;
-        if (useForegroundOverride) {
-            uint8_t tc_r = (textColorParam >> 24) & 0xFF;
-            uint8_t tc_g = (textColorParam >> 16) & 0xFF;
-            uint8_t tc_b = (textColorParam >> 8) & 0xFF;
-            textColor = HB_COLOR(tc_r, tc_g, tc_b, 255);
-        } else {
-            // Calculate luminance to determine text color (ITU-R BT.709 formula)
-            double luminance = (0.2126 * bg_r + 0.7152 * bg_g + 0.0722 * bg_b) / 255.0;
-            textColor = luminance > 0.5 ? HB_COLOR(0, 0, 0, 255) : HB_COLOR(255, 255, 255, 255);
-        }
-        
         SkPaint paint;
-        paint.setColor(SkColorSetARGB(255, hb_color_get_red(textColor), hb_color_get_green(textColor), hb_color_get_blue(textColor)));
+        paint.setColor(SK_ColorBLACK);
         paint.setAntiAlias(true);
         paint.setStyle(SkPaint::kFill_Style);
         
         skia_context_t context{};
         context.canvas = canvas.get();
         context.paint = &paint;
-        context.foreground = textColor;
-        context.use_foreground_override = useForegroundOverride;
+        context.foreground = HB_COLOR(0, 0, 0, 255);
+        context.use_foreground_override = useForeground;
         
         auto& pageText = pages[pageIndex];
         
@@ -419,7 +406,7 @@ struct QuranRendererImpl {
             canvas->scale(scale, -scale);
             
             auto& linetext = pageText[lineIndex];
-            drawLine(linetext, &context, lineWidth, justify, scale, textColor);
+            drawLine(linetext, &context, lineWidth, justify, scale);
         }
     }
     
@@ -470,8 +457,7 @@ void quran_renderer_draw_page(
         config ? config->fontScale : 1.0f,
         config ? config->backgroundColor : 0xFFFFFFFF,
         config ? config->fontSize : 0,
-        config ? config->useForegroundOverride : false,
-        config ? config->textColor : 0x000000FF
+        config ? config->useForeground : false
     );
 }
 
