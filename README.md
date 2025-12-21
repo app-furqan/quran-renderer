@@ -1,6 +1,11 @@
-# Quran Renderer Android
+# Quran Renderer
 
-A high-quality Quran text rendering library for Android using the **[DigitalKhatt](https://digitalkhatt.org)** Quran font. Features professional Arabic typography with tajweed coloring and automatic line justification using kashida stretching.
+A high-quality, cross-platform Quran text rendering library using the **[DigitalKhatt](https://digitalkhatt.org)** Quran font. Features professional Arabic typography with tajweed coloring and automatic line justification using kashida stretching.
+
+**Supported Platforms:**
+- **Android** - AAR library with Kotlin API
+- **Linux** - Shared library (.so)
+- **iOS/macOS** - XCFramework with C API
 
 This library renders Quran pages using:
 - **DigitalKhatt Fonts** - Variable OpenType fonts specifically designed for Quran typography with COLR-based tajweed highlighting
@@ -12,18 +17,18 @@ This library renders Quran pages using:
 
 ## Features
 
+- **Cross-Platform**: Android, Linux, iOS, and macOS support
 - **Professional Arabic Typography**: Custom HarfBuzz fork with kashida/tatweel-based line justification
 - **Tajweed Coloring**: Per-glyph color output from OpenType COLR table (Madina Quranic font)
 - **Variable Font Support**: Per-glyph axis control for dynamic kashida stretching
+- **Font Size Scaling**: Adjustable text size (0.5x to 2.0x)
 - **Four Font Styles Included**: Madina Quranic (with tajweed), New Madina, Old Madina, and IndoPak
 - **High-Quality Rendering**: Skia-based rendering with anti-aliasing and subpixel positioning
-- **Multi-ABI Support**: Pre-built for `arm64-v8a`, `armeabi-v7a`, and `x86_64`
-- **Small Footprint**: Static Skia linking (~10 MB release AAR)
 
 ## Architecture
 
 ```
-quran-renderer-android/
+quran-renderer/
 ├── include/quran/              # Public C API headers
 │   └── renderer.h
 ├── src/
@@ -41,8 +46,11 @@ quran-renderer-android/
 │       ├── java/org/digitalkhatt/quran/renderer/
 │       │   └── QuranRenderer.kt   # Kotlin API
 │       └── assets/fonts/       # Font files
-├── build.gradle
-├── settings.gradle
+├── scripts/
+│   ├── build-dependencies.sh   # Android dependencies builder
+│   ├── build-linux.sh          # Linux build script
+│   └── build-apple.sh          # iOS/macOS build script
+├── CMakeLists.txt              # Cross-platform CMake config
 └── local.properties.template
 ```
 
@@ -188,6 +196,87 @@ Options:
 
 ---
 
+## Linux Build
+
+Build a shared library (`.so`) for Linux:
+
+```bash
+# Clone the repository
+git clone https://github.com/hussainak/quran-renderer.git
+cd quran-renderer
+
+# Run the Linux build script
+./scripts/build-linux.sh
+```
+
+**Output:**
+- `build/linux/lib/libquranrenderer.so` - Shared library
+- `build/linux/include/quran/renderer.h` - Header file
+- `build/linux/fonts/digitalkhatt.otf` - Font file
+
+**Build Options:**
+```bash
+./scripts/build-linux.sh --help
+
+Options:
+  --deps-dir PATH    Directory for dependencies (default: ../quran-deps)
+  --output-dir PATH  Output directory (default: build/linux)
+  --skip-deps        Skip building dependencies
+  --clean            Clean build directory
+```
+
+**Requirements:**
+- CMake 3.18+
+- Ninja
+- Python 3
+- GCC/Clang with C++17 support
+
+---
+
+## iOS/macOS Build
+
+Build an XCFramework for iOS and macOS (requires macOS with Xcode):
+
+```bash
+# Clone the repository
+git clone https://github.com/hussainak/quran-renderer.git
+cd quran-renderer
+
+# Run the Apple build script
+./scripts/build-apple.sh
+```
+
+**Output:**
+- `build/apple/QuranRenderer.xcframework` - Universal framework
+  - iOS device (arm64)
+  - iOS Simulator (arm64, x86_64)
+  - macOS (arm64, x86_64)
+
+**Build Options:**
+```bash
+./scripts/build-apple.sh --help
+
+Options:
+  --deps-dir PATH    Directory for dependencies (default: ../quran-deps)
+  --output-dir PATH  Output directory (default: build/apple)
+  --ios-only         Build only iOS
+  --macos-only       Build only macOS
+  --skip-deps        Skip building dependencies
+  --clean            Clean build directory
+```
+
+**Requirements:**
+- macOS with Xcode
+- Xcode Command Line Tools
+- CMake, Ninja, Python 3
+
+**Xcode Integration:**
+1. Drag `QuranRenderer.xcframework` into your Xcode project
+2. Add to "Frameworks, Libraries, and Embedded Content"
+3. `#include <quran/renderer.h>`
+
+---
+
 ## Usage
 
 ### Android (Kotlin)
@@ -305,6 +394,146 @@ renderer.drawPage(bitmap, pageIndex, tajweed = true, justify = true, fontScale =
 val fontScale = seekBar.progress / 100f + 0.5f  // Map 0-100 to 0.5-1.5
 renderer.renderPage(width, height, pageIndex, fontScale = fontScale)
 ```
+
+---
+
+### C API (Linux/iOS/macOS)
+
+The C API can be used from C, C++, Swift, or any language with C FFI support.
+
+#### Basic Usage (C/C++)
+
+```c
+#include <quran/renderer.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+    // Load font file
+    FILE* f = fopen("fonts/digitalkhatt.otf", "rb");
+    fseek(f, 0, SEEK_END);
+    size_t size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    
+    uint8_t* fontData = malloc(size);
+    fread(fontData, 1, size, f);
+    fclose(f);
+    
+    // Create renderer
+    QuranFontData font = { .data = fontData, .size = size };
+    QuranRendererHandle renderer = quran_renderer_create(&font);
+    
+    if (!renderer) {
+        fprintf(stderr, "Failed to create renderer\n");
+        return 1;
+    }
+    
+    // Create pixel buffer (RGBA)
+    int width = 1080, height = 1920;
+    uint8_t* pixels = malloc(width * height * 4);
+    
+    QuranPixelBuffer buffer = {
+        .pixels = pixels,
+        .width = width,
+        .height = height,
+        .stride = width * 4,
+        .format = QURAN_PIXEL_FORMAT_RGBA8888
+    };
+    
+    // Render page
+    QuranRenderConfig config = {
+        .tajweed = true,
+        .justify = true,
+        .fontScale = 1.0f
+    };
+    
+    quran_renderer_draw_page(renderer, &buffer, 0, &config);  // Page 0 = Al-Fatiha
+    
+    // pixels now contains the rendered page
+    // Save to PNG, display, etc.
+    
+    // Cleanup
+    quran_renderer_destroy(renderer);
+    free(pixels);
+    free(fontData);
+    
+    return 0;
+}
+```
+
+#### Swift Usage (iOS/macOS)
+
+```swift
+import Foundation
+
+class QuranRenderer {
+    private var handle: QuranRendererHandle?
+    private var fontData: Data?
+    
+    init?(fontPath: String) {
+        guard let data = FileManager.default.contents(atPath: fontPath) else {
+            return nil
+        }
+        
+        fontData = data
+        
+        var font = QuranFontData()
+        fontData?.withUnsafeBytes { ptr in
+            font.data = ptr.baseAddress?.assumingMemoryBound(to: UInt8.self)
+            font.size = data.count
+        }
+        
+        handle = quran_renderer_create(&font)
+        guard handle != nil else { return nil }
+    }
+    
+    deinit {
+        if let handle = handle {
+            quran_renderer_destroy(handle)
+        }
+    }
+    
+    func renderPage(pageIndex: Int, width: Int, height: Int, 
+                    tajweed: Bool = true, fontScale: Float = 1.0) -> Data? {
+        guard let handle = handle else { return nil }
+        
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        
+        var buffer = QuranPixelBuffer()
+        buffer.width = Int32(width)
+        buffer.height = Int32(height)
+        buffer.stride = Int32(width * 4)
+        buffer.format = QURAN_PIXEL_FORMAT_RGBA8888
+        
+        pixels.withUnsafeMutableBytes { ptr in
+            buffer.pixels = ptr.baseAddress
+            
+            var config = QuranRenderConfig()
+            config.tajweed = tajweed
+            config.justify = true
+            config.fontScale = fontScale
+            
+            quran_renderer_draw_page(handle, &buffer, Int32(pageIndex), &config)
+        }
+        
+        return Data(pixels)
+    }
+    
+    var pageCount: Int {
+        guard let handle = handle else { return 0 }
+        return Int(quran_renderer_get_page_count(handle))
+    }
+}
+
+// Usage
+if let renderer = QuranRenderer(fontPath: Bundle.main.path(forResource: "digitalkhatt", ofType: "otf")!) {
+    if let imageData = renderer.renderPage(pageIndex: 0, width: 1080, height: 1920) {
+        // Create UIImage/NSImage from imageData
+    }
+}
+```
+
+---
 
 #### Custom View Example
 
