@@ -89,7 +89,8 @@ Java_org_digitalkhatt_quran_renderer_QuranRenderer_nativeDrawPage(
     jobject bitmap,
     jint pageIndex,
     jboolean tajweed,
-    jboolean justify
+    jboolean justify,
+    jfloat fontScale
 ) {
     if (!g_renderer) {
         LOGE("Renderer not initialized");
@@ -123,6 +124,7 @@ Java_org_digitalkhatt_quran_renderer_QuranRenderer_nativeDrawPage(
     QuranRenderConfig config;
     config.tajweed = tajweed;
     config.justify = justify;
+    config.fontScale = fontScale;
 
     quran_renderer_draw_page(g_renderer, &buffer, pageIndex, &config);
 

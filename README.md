@@ -275,7 +275,7 @@ Log.d("Quran", "Has tajweed: ${currentFont?.hasTajweed}")
 ```kotlin
 // Create a font selection dialog
 val fontOptions = QuranFont.values()
-val fontNames = fontOptions.map { it.displayName }.toTypedArray()
+val fontNames = fontOptions.map { "${it.displayName}${if (it.hasTajweed) " ✓" else ""}" }.toTypedArray()
 
 AlertDialog.Builder(this)
     .setTitle("Select Font Style")
@@ -287,6 +287,23 @@ AlertDialog.Builder(this)
         }
     }
     .show()
+```
+
+#### Adjusting Font Size
+
+```kotlin
+// Render with larger text (1.2x scale)
+renderer.drawPage(bitmap, pageIndex, tajweed = true, justify = true, fontScale = 1.2f)
+
+// Render with smaller text (0.8x scale) 
+renderer.drawPage(bitmap, pageIndex, tajweed = true, justify = true, fontScale = 0.8f)
+
+// Font scale range: 0.5 to 2.0 (clamped internally)
+// Default: 1.0
+
+// Example: Font size slider in settings
+val fontScale = seekBar.progress / 100f + 0.5f  // Map 0-100 to 0.5-1.5
+renderer.renderPage(width, height, pageIndex, fontScale = fontScale)
 ```
 
 #### Custom View Example

@@ -138,18 +138,20 @@ class QuranRenderer private constructor() {
      * @param pageIndex Page index (0-603)
      * @param tajweed Enable tajweed coloring
      * @param justify Enable line justification
+     * @param fontScale Font size scale factor (1.0 = default, range: 0.5-2.0)
      */
     fun drawPage(
         bitmap: Bitmap,
         pageIndex: Int,
         tajweed: Boolean = true,
-        justify: Boolean = true
+        justify: Boolean = true,
+        fontScale: Float = 1.0f
     ) {
         require(initialized) { "QuranRenderer not initialized" }
         require(bitmap.config == Bitmap.Config.ARGB_8888) { "Bitmap must be ARGB_8888" }
         require(pageIndex in 0 until pageCount) { "Invalid page index: $pageIndex" }
         
-        nativeDrawPage(bitmap, pageIndex, tajweed, justify)
+        nativeDrawPage(bitmap, pageIndex, tajweed, justify, fontScale)
     }
 
     /**
@@ -160,6 +162,7 @@ class QuranRenderer private constructor() {
      * @param pageIndex Page index (0-603)
      * @param tajweed Enable tajweed coloring
      * @param justify Enable line justification
+     * @param fontScale Font size scale factor (1.0 = default, range: 0.5-2.0)
      * @return Rendered bitmap
      */
     fun renderPage(
@@ -167,10 +170,11 @@ class QuranRenderer private constructor() {
         height: Int,
         pageIndex: Int,
         tajweed: Boolean = true,
-        justify: Boolean = true
+        justify: Boolean = true,
+        fontScale: Float = 1.0f
     ): Bitmap {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        drawPage(bitmap, pageIndex, tajweed, justify)
+        drawPage(bitmap, pageIndex, tajweed, justify, fontScale)
         return bitmap
     }
 
@@ -194,6 +198,6 @@ class QuranRenderer private constructor() {
     // Native methods
     private external fun nativeInit(assetManager: AssetManager, fontPath: String): Boolean
     private external fun nativeDestroy()
-    private external fun nativeDrawPage(bitmap: Bitmap, pageIndex: Int, tajweed: Boolean, justify: Boolean)
+    private external fun nativeDrawPage(bitmap: Bitmap, pageIndex: Int, tajweed: Boolean, justify: Boolean, fontScale: Float)
     private external fun nativeGetPageCount(): Int
 }

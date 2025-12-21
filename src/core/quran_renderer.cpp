@@ -282,7 +282,7 @@ struct QuranRendererImpl {
         hb_buffer_destroy(buffer);
     }
     
-    void drawPage(void* pixels, int width, int height, int stride, int pageIndex, bool justify) {
+    void drawPage(void* pixels, int width, int height, int stride, int pageIndex, bool justify, float fontScale = 1.0f) {
         SkImageInfo imageInfo = SkImageInfo::MakeN32Premul(width, height);
         auto canvas = SkCanvas::MakeRasterDirect(imageInfo, pixels, stride);
         
@@ -299,9 +299,12 @@ struct QuranRendererImpl {
         
         auto& pageText = pages[pageIndex];
         
-        int char_height = (width / 17) * 0.9;
+        // Apply font scale factor (clamp to reasonable range)
+        float clampedScale = std::max(0.5f, std::min(2.0f, fontScale));
+        
+        int char_height = (width / 17) * 0.9 * clampedScale;
         int inter_line = height / 15;
-        int y_start = inter_line * 0.72;
+        int y_start = inter_line * 0.72 + (inter_line * (1.0f - clampedScale) * 0.3f);
         int x_padding = width / 42.5;
         
         double scale = (double)char_height / upem;
@@ -375,7 +378,8 @@ void quran_renderer_draw_page(
         buffer->height,
         buffer->stride,
         pageIndex,
-        config ? config->justify : true
+        config ? config->justify : true,
+        config ? config->fontScale : 1.0f
     );
 }
 

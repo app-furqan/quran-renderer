@@ -48,6 +48,7 @@ typedef struct {
 typedef struct {
     bool tajweed;       // Enable tajweed coloring
     bool justify;       // Enable line justification
+    float fontScale;    // Font scale factor (1.0 = default, 0.8-1.2 recommended)
 } QuranRenderConfig;
 
 /**
