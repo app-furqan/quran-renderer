@@ -330,10 +330,22 @@ struct QuranRendererImpl {
         // Apply font scale factor (clamp to reasonable range)
         float clampedScale = std::max(0.5f, std::min(2.0f, fontScale));
         
-        int char_height = (width / 17) * 0.9 * clampedScale;
+        // Dynamic font size calculation based on both width and height
+        // This ensures proper scaling across different screen sizes and aspect ratios
         int inter_line = height / 15;
-        int y_start = inter_line * 0.72 + (inter_line * (1.0f - clampedScale) * 0.3f);
         int x_padding = width / 42.5;
+        
+        // Calculate char_height from the smaller of the two constraints:
+        // 1. Based on width (horizontal constraint)
+        // 2. Based on height/line spacing (vertical constraint)
+        int char_height_from_width = (width / 17) * 0.9;
+        int char_height_from_height = inter_line * 0.85; // Leave some spacing between lines
+        
+        // Use the smaller value to ensure text fits in both dimensions
+        int char_height = std::min(char_height_from_width, char_height_from_height);
+        char_height = char_height * clampedScale;
+        
+        int y_start = inter_line * 0.72 + (inter_line * (1.0f - clampedScale) * 0.3f);
         
         double scale = (double)char_height / upem;
         int x_start = width - x_padding;
