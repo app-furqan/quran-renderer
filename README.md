@@ -1,6 +1,12 @@
 # Quran Renderer Android
 
-A high-quality Quran text rendering library for Android, featuring professional Arabic typography with tajweed coloring and line justification. Built with custom HarfBuzz (Arabic justification support) and Skia graphics engine.
+A high-quality Quran text rendering library for Android using the **[DigitalKhatt](https://digitalkhatt.org)** Quran font. Features professional Arabic typography with tajweed coloring and automatic line justification using kashida stretching.
+
+This library renders Quran pages using:
+- **DigitalKhatt Font** - A variable OpenType font specifically designed for Quran typography with COLR-based tajweed highlighting
+- **HarfBuzz (DigitalKhatt fork)** - Custom text shaping engine with Arabic text justification support
+- **VisualMetaFont (DigitalKhatt)** - Quran text data and page layout information
+- **Skia Graphics Engine** - High-quality 2D rendering
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
@@ -50,17 +56,23 @@ quran-renderer-android/
 
 ### Dependencies (Source)
 
-1. **HarfBuzz (justification branch)**: https://github.com/DigitalKhatt/harfbuzz
+1. **HarfBuzz (DigitalKhatt fork)**: https://github.com/DigitalKhatt/harfbuzz
    - Branch: `justification`
-   - Features: `hb_buffer_set_justify()`, tatweel extension fields
+   - Features: `hb_buffer_set_justify()`, tatweel extension fields for Arabic text justification
+   - This fork adds kashida-based line justification support not available in upstream HarfBuzz
 
-2. **Skia (static build)**: Built from https://skia.googlesource.com/skia
+2. **VisualMetaFont (DigitalKhatt)**: https://github.com/DigitalKhatt/visualmetafont
+   - Provides Quran text data and page layout (`quran.cpp`)
+   - Contains the text content for all 604 pages of the Quran
+
+3. **Skia (static build)**: Built from https://skia.googlesource.com/skia
    - Pre-built static libraries for Android ABIs
+   - Used for high-quality 2D rendering with anti-aliasing
 
-3. **VisualMetaFont**: https://github.com/DigitalKhatt/visualmetafont
-   - Provides Quran text data (`quran.cpp`)
-
-4. **Quran Font**: DigitalKhatt variable font with tajweed COLR lookups
+4. **DigitalKhatt Quran Font**: Variable OpenType font with:
+   - Tajweed coloring via COLR table lookups
+   - Variable axis for kashida stretching
+   - Visit https://digitalkhatt.org for more information
 
 ---
 
