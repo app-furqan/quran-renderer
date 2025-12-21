@@ -62,17 +62,23 @@ quran-renderer-android/
    - This fork adds kashida-based line justification support not available in upstream HarfBuzz
 
 2. **VisualMetaFont (DigitalKhatt)**: https://github.com/DigitalKhatt/visualmetafont
-   - Provides Quran text data and page layout (`quran.cpp`)
-   - Contains the text content for all 604 pages of the Quran
+   - **Quran Text Source**: `src/qurantext/quran.cpp` - Contains all 604 pages of Quran text
+   - Pre-formatted with surah names, ayah markers (۝١, ۝٢, etc.), and line breaks
+   - Also includes `qurancomplex.cpp` for King Fahd Complex text variant
 
 3. **Skia (static build)**: Built from https://skia.googlesource.com/skia
    - Pre-built static libraries for Android ABIs
    - Used for high-quality 2D rendering with anti-aliasing
 
-4. **DigitalKhatt Quran Font**: Variable OpenType font with:
-   - Tajweed coloring via COLR table lookups
-   - Variable axis for kashida stretching
-   - Visit https://digitalkhatt.org for more information
+4. **DigitalKhatt Quran Fonts**: Variable OpenType fonts with tajweed coloring and kashida stretching
+   
+   | Font | Repository | Description |
+   |------|------------|-------------|
+   | **Madina** | [madinafont](https://github.com/DigitalKhatt/madinafont) | New Madina Mushaf style (default) |
+   | **Old Madina** | [oldmadinafont](https://github.com/DigitalKhatt/oldmadinafont) | Based on older Madina Mushaf printing |
+   | **IndoPak** | [indopakfont](https://github.com/DigitalKhatt/indopakfont) | 13-line IndoPak Mushaf style |
+   
+   Visit https://digitalkhatt.org for live demos and more information.
 
 ---
 
