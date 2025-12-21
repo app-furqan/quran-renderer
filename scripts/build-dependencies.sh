@@ -200,20 +200,73 @@ main() {
     fi
     
     echo ""
-    echo "Step 1/5: Cloning/updating HarfBuzz (DigitalKhatt fork)"
+    echo "Step 1/6: Cloning/updating HarfBuzz (DigitalKhatt fork)"
     echo "--------------------------------------------------------"
     clone_or_update "https://github.com/DigitalKhatt/harfbuzz.git" "$DEPS_DIR/harfbuzz" "justification"
     
     echo ""
-    echo "Step 2/5: Cloning/updating VisualMetaFont"
-    echo "------------------------------------------"
+    echo "Step 2/6: Cloning/updating VisualMetaFont (Quran text data)"
+    echo "------------------------------------------------------------"
     clone_or_update "https://github.com/DigitalKhatt/visualmetafont.git" "$DEPS_DIR/visualmetafont"
+    log_info "Quran text source: $DEPS_DIR/visualmetafont/src/qurantext/quran.cpp"
+    
+    echo ""
+    echo "Step 3/6: Downloading DigitalKhatt fonts"
+    echo "-----------------------------------------"
+    FONTS_DIR="$DEPS_DIR/fonts"
+    mkdir -p "$FONTS_DIR"
+    
+    # Download Madina font (new style)
+    if [[ ! -f "$FONTS_DIR/madina.otf" ]]; then
+        log_info "Downloading Madina font..."
+        curl -L -o "$FONTS_DIR/madina.otf" \
+            "https://github.com/DigitalKhatt/madinafont/raw/main/madina.otf" 2>/dev/null || \
+            log_warn "Could not download madina.otf - you may need to build it from source"
+    else
+        log_info "Madina font already exists"
+    fi
+    
+    # Download Old Madina font
+    log_info "Checking Old Madina font..."
+    if [[ ! -f "$FONTS_DIR/oldmadina.otf" ]]; then
+        # Try to get from releases first
+        OLDMADINA_URL=$(curl -s "https://api.github.com/repos/DigitalKhatt/oldmadinafont/releases/latest" | \
+            grep "browser_download_url.*\.otf" | cut -d '"' -f 4 || echo "")
+        if [[ -n "$OLDMADINA_URL" ]]; then
+            log_info "Downloading Old Madina font from release..."
+            curl -L -o "$FONTS_DIR/oldmadina.otf" "$OLDMADINA_URL" 2>/dev/null
+        else
+            log_warn "Old Madina font not available as pre-built - needs to be built from source"
+            log_warn "See: https://github.com/DigitalKhatt/oldmadinafont"
+        fi
+    else
+        log_info "Old Madina font already exists"
+    fi
+    
+    # Download IndoPak font
+    log_info "Checking IndoPak font..."
+    if [[ ! -f "$FONTS_DIR/indopak.otf" ]]; then
+        INDOPAK_URL=$(curl -s "https://api.github.com/repos/DigitalKhatt/indopakfont/releases/latest" | \
+            grep "browser_download_url.*\.otf" | cut -d '"' -f 4 || echo "")
+        if [[ -n "$INDOPAK_URL" ]]; then
+            log_info "Downloading IndoPak font from release..."
+            curl -L -o "$FONTS_DIR/indopak.otf" "$INDOPAK_URL" 2>/dev/null
+        else
+            log_warn "IndoPak font not available as pre-built - needs to be built from source"
+            log_warn "See: https://github.com/DigitalKhatt/indopakfont"
+        fi
+    else
+        log_info "IndoPak font already exists"
+    fi
+    
+    log_success "Fonts downloaded to: $FONTS_DIR"
+    ls -lh "$FONTS_DIR"/*.otf 2>/dev/null || true
     
     if [[ "$SKIP_SKIA" == true ]]; then
         log_warn "Skipping Skia build (--skip-skia specified)"
     else
         echo ""
-        echo "Step 3/5: Setting up Skia build tools"
+        echo "Step 4/6: Setting up Skia build tools"
         echo "--------------------------------------"
         
         # Clone depot_tools if needed
@@ -231,7 +284,7 @@ main() {
         python3 tools/git-sync-deps
         
         echo ""
-        echo "Step 4/5: Building Skia for all ABIs"
+        echo "Step 5/6: Building Skia for all ABIs"
         echo "-------------------------------------"
         
         # Build for all ABIs
@@ -241,7 +294,7 @@ main() {
     fi
     
     echo ""
-    echo "Step 5/5: Organizing output"
+    echo "Step 6/6: Organizing output"
     echo "----------------------------"
     
     # Create output directory structure
@@ -296,9 +349,20 @@ vmf.dir=$DEPS_DIR/visualmetafont
 
 # Skia static libraries
 skia.dir=$SKIA_OUT
+
+# DigitalKhatt fonts directory (contains madina.otf, oldmadina.otf, indopak.otf)
+fonts.dir=$DEPS_DIR/fonts
 EOF
     
     log_success "Generated $LOCAL_PROPS"
+    
+    # Copy default font to assets if not exists
+    ASSETS_FONTS="$PROJECT_DIR/android/src/main/assets/fonts"
+    if [[ -f "$DEPS_DIR/fonts/madina.otf" ]] && [[ ! -f "$ASSETS_FONTS/digitalkhatt.otf" ]]; then
+        log_info "Copying Madina font to assets as default..."
+        mkdir -p "$ASSETS_FONTS"
+        cp "$DEPS_DIR/fonts/madina.otf" "$ASSETS_FONTS/digitalkhatt.otf"
+    fi
     
     # Print summary
     echo ""
@@ -312,6 +376,11 @@ EOF
     echo "  $DEPS_DIR/"
     echo "  ├── harfbuzz/          (DigitalKhatt fork)"
     echo "  ├── visualmetafont/    (Quran text data)"
+    echo "  │   └── src/qurantext/quran.cpp  <- Quran text source (604 pages)"
+    echo "  ├── fonts/             (DigitalKhatt fonts)"
+    echo "  │   ├── madina.otf     (New Madina style - default)"
+    echo "  │   ├── oldmadina.otf  (Old Madina style)"
+    echo "  │   └── indopak.otf    (IndoPak 13-line style)"
     echo "  ├── skia/              (Skia source)"
     echo "  ├── skia-build/        (Organized output)"
     echo "  │   ├── arm64-v8a/libskia.a"
@@ -321,12 +390,19 @@ EOF
     echo "  └── depot_tools/"
     echo ""
     
+    echo "Available fonts:"
+    ls -lh "$DEPS_DIR/fonts"/*.otf 2>/dev/null | awk '{print "  " $9 ": " $5}' || echo "  (none downloaded)"
+    echo ""
+    
     if [[ "$SKIP_SKIA" != true ]]; then
-        echo "Library sizes:"
+        echo "Skia library sizes:"
         ls -lh "$SKIA_OUT"/*/libskia.a 2>/dev/null | awk '{print "  " $9 ": " $5}'
         echo ""
     fi
     
+    echo "To use a different font, copy it to:"
+    echo "  $PROJECT_DIR/android/src/main/assets/fonts/digitalkhatt.otf"
+    echo ""
     echo "Next steps:"
     echo "  1. cd $PROJECT_DIR"
     echo "  2. ./gradlew :android:assembleRelease"
