@@ -269,8 +269,11 @@ build_skia() {
         skia_use_system_libwebp=false
         skia_use_libwebp_decode=false
         skia_use_libwebp_encode=false
+        skia_use_libjpeg_turbo_decode=false
+        skia_use_libjpeg_turbo_encode=false
         skia_use_xps=false
         skia_use_dng_sdk=false
+        skia_use_piex=false
         skia_use_expat=false
         skia_use_icu=false
         skia_use_gl=true
@@ -284,7 +287,7 @@ build_skia() {
         cxx=\"$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++\"
     "
     
-    ninja -C "$SKIA_OUT" skia
+    ninja -C "$SKIA_OUT" :skia
     
     log_success "Skia built successfully for $TARGET_ABI"
 }

@@ -313,12 +313,14 @@ build_skia_platform() {
         skia_use_dng_sdk=false
         skia_use_piex=false
         skia_use_sfntly=false
+        skia_use_libjpeg_turbo_decode=false
+        skia_use_libjpeg_turbo_encode=false
         skia_use_wuffs=true
         extra_cflags_cc=[\"-frtti\"]
         $EXTRA_ARGS
     "
     
-    ninja -C "$OUT_DIR"
+    ninja -C "$OUT_DIR" :skia
     
     log_success "Skia built for $PLATFORM-$ARCH"
 }
