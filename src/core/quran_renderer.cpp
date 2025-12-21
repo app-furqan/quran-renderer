@@ -371,7 +371,9 @@ struct QuranRendererImpl {
         int char_height = std::min(char_height_from_width, char_height_from_height);
         char_height = char_height * clampedScale;
         
-        int y_start = inter_line * 0.72 + (inter_line * (1.0f - clampedScale) * 0.3f);
+        // y_start should account for the character height since text renders upward from baseline
+        // Add char_height to ensure text doesn't get cut off at top
+        int y_start = char_height + (inter_line - char_height) * 0.5;
         
         double scale = (double)char_height / upem;
         int x_start = width - x_padding;
