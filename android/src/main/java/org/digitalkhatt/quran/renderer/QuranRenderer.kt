@@ -4,10 +4,36 @@ import android.content.res.AssetManager
 import android.graphics.Bitmap
 
 /**
+ * Available DigitalKhatt font styles.
+ */
+enum class QuranFont(val assetPath: String, val displayName: String) {
+    /** New Madina Mushaf style */
+    MADINA("fonts/madina.otf", "Madina"),
+    /** Old Madina Mushaf style (based on older printing) */
+    OLD_MADINA("fonts/oldmadina.otf", "Old Madina"),
+    /** IndoPak 13-line Mushaf style */
+    INDOPAK("fonts/indopak.otf", "IndoPak")
+}
+
+/**
  * QuranRenderer - High-quality Quran text rendering
  * 
  * Uses custom HarfBuzz (with justification support) and Skia
  * for professional-grade Arabic text layout and tajweed coloring.
+ * 
+ * Supports three font styles:
+ * - MADINA: New Madina Mushaf style (default)
+ * - OLD_MADINA: Old Madina Mushaf style
+ * - INDOPAK: IndoPak 13-line Mushaf style
+ * 
+ * Example usage:
+ * ```kotlin
+ * val renderer = QuranRenderer.getInstance()
+ * renderer.initialize(assets, QuranFont.MADINA)
+ * 
+ * // Switch to Old Madina style
+ * renderer.setFont(assets, QuranFont.OLD_MADINA)
+ * ```
  */
 class QuranRenderer private constructor() {
 
@@ -31,19 +57,68 @@ class QuranRenderer private constructor() {
     }
 
     private var initialized = false
+    private var currentFont: QuranFont? = null
 
     /**
-     * Initialize the renderer with font asset.
+     * Initialize the renderer with a font style.
      * 
      * @param assetManager Android AssetManager
-     * @param fontPath Path to the font file in assets (e.g., "fonts/quran.otf")
+     * @param font QuranFont style to use (default: MADINA)
+     * @return true if initialization succeeded
+     */
+    fun initialize(assetManager: AssetManager, font: QuranFont = QuranFont.MADINA): Boolean {
+        if (initialized) return true
+        initialized = nativeInit(assetManager, font.assetPath)
+        if (initialized) {
+            currentFont = font
+        }
+        return initialized
+    }
+
+    /**
+     * Initialize the renderer with a custom font path.
+     * 
+     * @param assetManager Android AssetManager
+     * @param fontPath Path to the font file in assets (e.g., "fonts/custom.otf")
      * @return true if initialization succeeded
      */
     fun initialize(assetManager: AssetManager, fontPath: String): Boolean {
         if (initialized) return true
         initialized = nativeInit(assetManager, fontPath)
+        if (initialized) {
+            currentFont = null // Custom font
+        }
         return initialized
     }
+
+    /**
+     * Switch to a different font style.
+     * Destroys current renderer and reinitializes with new font.
+     * 
+     * @param assetManager Android AssetManager
+     * @param font QuranFont style to switch to
+     * @return true if switch succeeded
+     */
+    fun setFont(assetManager: AssetManager, font: QuranFont): Boolean {
+        if (currentFont == font) return true
+        
+        if (initialized) {
+            nativeDestroy()
+            initialized = false
+        }
+        
+        initialized = nativeInit(assetManager, font.assetPath)
+        if (initialized) {
+            currentFont = font
+        }
+        return initialized
+    }
+
+    /**
+     * Get the currently active font style.
+     * @return Current QuranFont or null if using custom font
+     */
+    fun getCurrentFont(): QuranFont? = currentFont
 
     /**
      * Check if the renderer is initialized.
@@ -106,6 +181,7 @@ class QuranRenderer private constructor() {
         if (initialized) {
             nativeDestroy()
             initialized = false
+            currentFont = null
         }
     }
 

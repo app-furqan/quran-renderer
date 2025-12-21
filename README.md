@@ -15,7 +15,7 @@ This library renders Quran pages using:
 - **Professional Arabic Typography**: Custom HarfBuzz fork with kashida/tatweel-based line justification
 - **Tajweed Coloring**: Per-glyph color output from OpenType COLR table lookups
 - **Variable Font Support**: Per-glyph axis control for dynamic kashida stretching
-- **Multiple Font Styles**: Madina, Old Madina, and IndoPak font options
+- **Three Font Styles Included**: Madina, Old Madina, and IndoPak fonts bundled with runtime switching
 - **High-Quality Rendering**: Skia-based rendering with anti-aliasing and subpixel positioning
 - **Multi-ABI Support**: Pre-built for `arm64-v8a`, `armeabi-v7a`, and `x86_64`
 - **Small Footprint**: Static Skia linking (~7.6 MB release AAR)
@@ -74,13 +74,18 @@ quran-renderer-android/
 
 4. **DigitalKhatt Quran Fonts**: Variable OpenType fonts with tajweed coloring and kashida stretching
    
-   | Font | Repository | Description | Download |
-   |------|------------|-------------|----------|
-   | **Madina** | [madinafont](https://github.com/DigitalKhatt/madinafont) | New Madina Mushaf style (default) | [madina.otf](https://github.com/DigitalKhatt/madinafont/raw/main/madina.otf) |
-   | **Old Madina** | [oldmadinafont](https://github.com/DigitalKhatt/oldmadinafont) | Based on older Madina Mushaf printing | [Releases](https://github.com/DigitalKhatt/oldmadinafont/releases) |
-   | **IndoPak** | [indopakfont](https://github.com/DigitalKhatt/indopakfont) | 13-line IndoPak Mushaf style | [Releases](https://github.com/DigitalKhatt/indopakfont/releases) |
+   All three font styles are **bundled with the AAR** in `assets/fonts/`:
    
-   **To switch fonts**: Copy your preferred `.otf` file to `android/src/main/assets/fonts/digitalkhatt.otf`
+   | Font | File | Style | Description |
+   |------|------|-------|-------------|
+   | **Madina** | `madina.otf` | `QuranFont.MADINA` | New Madina Mushaf (default) |
+   | **Old Madina** | `oldmadina.otf` | `QuranFont.OLD_MADINA` | Older Madina Mushaf printing |
+   | **IndoPak** | `indopak.otf` | `QuranFont.INDOPAK` | 13-line Pakistani Mushaf style |
+   
+   **Source Repositories:**
+   - Madina: [DigitalKhatt/madinafont](https://github.com/DigitalKhatt/madinafont)
+   - Old Madina: [DigitalKhatt/oldmadinafont](https://github.com/DigitalKhatt/oldmadinafont)
+   - IndoPak: [DigitalKhatt/indopakfont](https://github.com/DigitalKhatt/indopakfont)
    
    Visit https://digitalkhatt.org for live demos and more information.
 
@@ -187,6 +192,7 @@ Options:
 
 ```kotlin
 import org.digitalkhatt.quran.renderer.QuranRenderer
+import org.digitalkhatt.quran.renderer.QuranFont
 import android.graphics.Bitmap
 
 class QuranActivity : AppCompatActivity() {
@@ -195,9 +201,15 @@ class QuranActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Get singleton instance and initialize with font
+        // Get singleton instance
         renderer = QuranRenderer.getInstance()
-        val success = renderer.initialize(assets, "fonts/digitalkhatt.otf")
+        
+        // Initialize with default Madina font
+        val success = renderer.initialize(assets, QuranFont.MADINA)
+        
+        // Or choose a specific font style:
+        // renderer.initialize(assets, QuranFont.OLD_MADINA)  // Older Madina Mushaf style
+        // renderer.initialize(assets, QuranFont.INDOPAK)    // 13-line IndoPak style
         
         if (success) {
             // Render page 1 (Al-Fatiha)
@@ -231,6 +243,43 @@ for (page in 0 until renderer.pageCount) {
     renderer.drawPage(bitmap, page, tajweed = true, justify = true)
     // Use bitmap...
 }
+```
+
+#### Switching Fonts at Runtime
+
+```kotlin
+import org.digitalkhatt.quran.renderer.QuranFont
+
+// Switch to a different font style
+renderer.setFont(assets, QuranFont.OLD_MADINA)
+
+// Check current font
+val currentFont = renderer.getCurrentFont()
+Log.d("Quran", "Current font: ${currentFont?.displayName}")
+
+// Available font styles:
+// - QuranFont.MADINA      -> "fonts/madina.otf" (New Madina Mushaf)
+// - QuranFont.OLD_MADINA  -> "fonts/oldmadina.otf" (Older Madina Mushaf)
+// - QuranFont.INDOPAK     -> "fonts/indopak.otf" (13-line IndoPak style)
+```
+
+#### Font Selection UI Example
+
+```kotlin
+// Create a font selection dialog
+val fontOptions = QuranFont.values()
+val fontNames = fontOptions.map { it.displayName }.toTypedArray()
+
+AlertDialog.Builder(this)
+    .setTitle("Select Font Style")
+    .setItems(fontNames) { _, which ->
+        val selectedFont = fontOptions[which]
+        if (renderer.setFont(assets, selectedFont)) {
+            // Re-render current page with new font
+            invalidate()
+        }
+    }
+    .show()
 ```
 
 #### Custom View Example
