@@ -100,12 +100,43 @@ dependencies {
 }
 ```
 
-### Option 2: Build from Source
+### Option 2: Build from Source (Automated)
+
+The easiest way to build from source is using the automated build script:
+
+```bash
+# Clone the repository
+git clone https://github.com/hussainak/quran-renderer.git
+cd quran-renderer
+
+# Run the automated dependency builder
+# This clones HarfBuzz, VisualMetaFont, builds Skia for all ABIs,
+# and generates local.properties automatically
+./scripts/build-dependencies.sh
+
+# Build the AAR
+./gradlew :android:assembleRelease
+```
+
+**Script Options:**
+```bash
+./scripts/build-dependencies.sh --help
+
+Options:
+  --ndk-path PATH    Path to Android NDK (default: auto-detect)
+  --deps-dir PATH    Directory for dependencies (default: ../quran-deps)
+  --skip-skia        Skip Skia build (if already built)
+  --clean            Clean and rebuild everything
+```
+
+> **Note:** Building Skia takes 10-30 minutes depending on your machine. The script builds for arm64-v8a, armeabi-v7a, and x86_64.
+
+### Option 3: Build from Source (Manual)
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/AliQasimzade/quran-renderer-android.git
-   cd quran-renderer-android
+   git clone https://github.com/hussainak/quran-renderer.git
+   cd quran-renderer
    ```
 
 2. Configure dependencies in `local.properties`:
@@ -551,9 +582,37 @@ class QuranRenderer {
 
 ## Building Dependencies from Source
 
-This section explains how to build/update all dependencies from their source repositories.
+### Automated Build Script (Recommended)
 
-### 1. Clone All Dependencies
+The easiest way to build all dependencies is using the provided script:
+
+```bash
+# From the project root
+./scripts/build-dependencies.sh
+```
+
+This script will:
+1. Clone/update HarfBuzz from https://github.com/DigitalKhatt/harfbuzz (justification branch)
+2. Clone/update VisualMetaFont from https://github.com/DigitalKhatt/visualmetafont
+3. Clone Skia and build static libraries for all 3 ABIs
+4. Organize output files in the correct structure
+5. Generate `local.properties` automatically
+
+**Script options:**
+```bash
+./scripts/build-dependencies.sh --ndk-path /path/to/ndk  # Specify NDK path
+./scripts/build-dependencies.sh --deps-dir /path/to/deps # Custom deps location
+./scripts/build-dependencies.sh --skip-skia              # Skip Skia (already built)
+./scripts/build-dependencies.sh --clean                  # Clean rebuild
+```
+
+---
+
+### Manual Build Instructions
+
+If you prefer to build manually, follow these steps:
+
+#### 1. Clone All Dependencies
 
 ```bash
 # Create a working directory
@@ -571,7 +630,7 @@ export PATH="$PWD/depot_tools:$PATH"
 git clone https://skia.googlesource.com/skia.git
 ```
 
-### 2. Build Skia for Android
+#### 2. Build Skia for Android
 
 ```bash
 cd ~/quran-renderer-deps/skia
