@@ -729,7 +729,18 @@ int quran_renderer_draw_text(
         canvas->translate(-glyph_pos[i].x_advance, 0);
         canvas->translate(glyph_pos[i].x_offset, glyph_pos[i].y_offset);
         
-        hb_font_paint_glyph(renderer->font, glyph_index, renderer->paint_funcs, &context, 0, hbTextColor);
+        // Handle tajweed colors from base_codepoint (embedded by HarfBuzz during shaping)
+        hb_color_t glyphColor = hbTextColor;
+        if (useTajweed && glyph_pos[i].base_codepoint != 0) {
+            uint8_t r = (glyph_pos[i].base_codepoint >> 8) & 0xff;
+            uint8_t g = (glyph_pos[i].base_codepoint >> 16) & 0xff;
+            uint8_t b = (glyph_pos[i].base_codepoint >> 24) & 0xff;
+            if (r != 0 || g != 0 || b != 0) {
+                glyphColor = HB_COLOR(r, g, b, 255);
+            }
+        }
+        
+        hb_font_paint_glyph(renderer->font, glyph_index, renderer->paint_funcs, &context, 0, glyphColor);
         
         canvas->translate(-glyph_pos[i].x_offset, -glyph_pos[i].y_offset);
         
