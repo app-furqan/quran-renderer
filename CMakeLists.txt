@@ -85,10 +85,13 @@ else()
 endif()
 
 # Additional libraries that Skia may need
-target_link_libraries(quran_renderer PRIVATE
-    pthread
-    dl
-)
+# Android's Bionic has pthreads built-in, no separate library needed
+if(ANDROID)
+    target_link_libraries(quran_renderer PRIVATE log)
+else()
+    target_link_libraries(quran_renderer PRIVATE pthread)
+endif()
+target_link_libraries(quran_renderer PRIVATE dl)
 
 # Set output name
 set_target_properties(quran_renderer PROPERTIES

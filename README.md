@@ -1718,6 +1718,158 @@ class QuranMetadata {
 
 ---
 
+## Generic Arabic Text Rendering
+
+In addition to rendering Quran pages, this library can render **any arbitrary Arabic text** using the same high-quality HarfBuzz + Skia pipeline with kashida (tatweel) justification support.
+
+> **Note:** The DigitalKhatt fonts work with any Arabic text - they are not limited to Quran text. The Quran text is simply pre-embedded for convenience.
+
+### C API for Generic Arabic Text
+
+```c
+#include <quran/renderer.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+    // Load font file (any DigitalKhatt font or compatible Arabic font)
+    FILE* f = fopen("fonts/digitalkhatt.otf", "rb");
+    fseek(f, 0, SEEK_END);
+    size_t size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    
+    uint8_t* fontData = malloc(size);
+    fread(fontData, 1, size, f);
+    fclose(f);
+    
+    // Create renderer
+    QuranFontData font = { .data = fontData, .size = size };
+    QuranRendererHandle renderer = quran_renderer_create(&font);
+    
+    // Create pixel buffer
+    int width = 800, height = 200;
+    uint8_t* pixels = calloc(width * height * 4, 1);
+    
+    QuranPixelBuffer buffer = {
+        .pixels = pixels,
+        .width = width,
+        .height = height,
+        .stride = width * 4,
+        .format = QURAN_PIXEL_FORMAT_RGBA8888
+    };
+    
+    // Configure text rendering
+    QuranTextConfig config = {
+        .fontSize = 64,                // Font size in pixels
+        .textColor = 0x000000FF,       // Black text (RGBA)
+        .backgroundColor = 0xFFFFFFFF, // White background (RGBA)
+        .justify = true,               // Enable kashida justification
+        .lineWidth = 0,                // Auto-fit to buffer width
+        .rightToLeft = true            // Arabic is RTL
+    };
+    
+    // Render ANY Arabic text!
+    const char* arabicText = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ";
+    int renderedWidth = quran_renderer_draw_text(renderer, &buffer, arabicText, -1, &config);
+    
+    printf("Rendered %d pixels wide\n", renderedWidth);
+    
+    // pixels now contains the rendered text - save to PNG, display, etc.
+    
+    // Cleanup
+    quran_renderer_destroy(renderer);
+    free(pixels);
+    free(fontData);
+    
+    return 0;
+}
+```
+
+### Measuring Text Without Rendering
+
+```c
+int textWidth, textHeight;
+bool success = quran_renderer_measure_text(
+    renderer,
+    "مرحبا بالعالم",  // "Hello World" in Arabic
+    -1,               // -1 = null-terminated string
+    48,               // Font size
+    &textWidth,
+    &textHeight
+);
+
+printf("Text dimensions: %d x %d pixels\n", textWidth, textHeight);
+```
+
+### Multi-line Text Rendering
+
+```c
+// Render multiple lines (separated by newlines)
+const char* multiLineText = 
+    "السطر الأول\n"
+    "السطر الثاني\n"
+    "السطر الثالث";
+
+QuranTextConfig config = {
+    .fontSize = 48,
+    .textColor = 0x000000FF,
+    .backgroundColor = 0xFFFFFFFF,
+    .justify = false,
+    .rightToLeft = true
+};
+
+int linesRendered = quran_renderer_draw_multiline_text(
+    renderer,
+    &buffer,
+    multiLineText,
+    -1,             // null-terminated
+    &config,
+    1.5f            // 1.5x line spacing
+);
+
+printf("Rendered %d lines\n", linesRendered);
+```
+
+### Generic Text API Reference
+
+| Function | Description |
+|----------|-------------|
+| `quran_renderer_draw_text()` | Render a single line of Arabic text |
+| `quran_renderer_measure_text()` | Measure text dimensions without rendering |
+| `quran_renderer_draw_multiline_text()` | Render multiple lines with automatic line breaks |
+
+### QuranTextConfig Structure
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `fontSize` | `int` | Font size in pixels |
+| `textColor` | `uint32_t` | Text color in RGBA format (0xRRGGBBAA) |
+| `backgroundColor` | `uint32_t` | Background color in RGBA format (0xRRGGBBAA) |
+| `justify` | `bool` | Enable kashida justification to fill line width |
+| `lineWidth` | `float` | Target line width (0 = auto-fit to buffer width) |
+| `rightToLeft` | `bool` | Text direction (true for Arabic) |
+
+### Key Features for Generic Text
+
+| Feature | Description |
+|---------|-------------|
+| **Kashida Justification** | Set `justify = true` to stretch text using authentic Arabic letter extensions (tatweel) |
+| **Variable Font Axes** | Per-glyph control of left/right kashida extension |
+| **Any Font Size** | Specify exact pixel size |
+| **Custom Colors** | Full RGBA color control for text and background |
+| **Text Measurement** | Pre-calculate text bounds before rendering |
+| **Multi-line Support** | Automatic handling of newline-separated text |
+
+### Use Cases
+
+- **Custom Arabic text overlays** - Render any Arabic text for UI elements
+- **Book/article rendering** - Render Arabic books with professional typography
+- **Educational apps** - Display Arabic vocabulary with proper rendering
+- **Calligraphy apps** - Showcase Arabic calligraphy with kashida stretching
+- **Custom Quran apps** - Render specific verses with custom styling
+
+---
+
 ## API Reference
 
 ### QuranRenderer (Kotlin)

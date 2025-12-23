@@ -570,4 +570,257 @@ int quran_renderer_get_ayah_count(int surahNumber) {
     return SURAH_DATA[surahNumber].ayahCount;
 }
 
+// ============================================================================
+// Generic Arabic Text Rendering Implementation
+// ============================================================================
+
+int quran_renderer_draw_text(
+    QuranRendererHandle renderer,
+    QuranPixelBuffer* buffer,
+    const char* text,
+    int textLength,
+    const QuranTextConfig* config
+) {
+    if (!renderer || !buffer || !buffer->pixels || !text) {
+        return -1;
+    }
+    
+    // Handle null-terminated strings
+    size_t len = (textLength < 0) ? strlen(text) : static_cast<size_t>(textLength);
+    if (len == 0) {
+        return 0;
+    }
+    
+    // Default configuration
+    int fontSize = config ? config->fontSize : 48;
+    uint32_t textColor = config ? config->textColor : 0x000000FF;
+    uint32_t bgColor = config ? config->backgroundColor : 0xFFFFFFFF;
+    bool justify = config ? config->justify : false;
+    float targetWidth = config ? config->lineWidth : 0;
+    
+    // Set up Skia canvas
+    SkImageInfo imageInfo = SkImageInfo::Make(
+        buffer->width, buffer->height, 
+        kRGBA_8888_SkColorType, kPremul_SkAlphaType
+    );
+    auto canvas = SkCanvas::MakeRasterDirect(imageInfo, buffer->pixels, buffer->stride);
+    
+    // Clear with background color
+    uint8_t bg_r = (bgColor >> 24) & 0xFF;
+    uint8_t bg_g = (bgColor >> 16) & 0xFF;
+    uint8_t bg_b = (bgColor >> 8) & 0xFF;
+    uint8_t bg_a = bgColor & 0xFF;
+    canvas->drawColor(SkColorSetARGB(bg_a, bg_r, bg_g, bg_b));
+    
+    // Set up paint
+    SkPaint paint;
+    paint.setAntiAlias(true);
+    paint.setStyle(SkPaint::kFill_Style);
+    
+    // Set up rendering context
+    skia_context_t context{};
+    context.canvas = canvas.get();
+    context.paint = &paint;
+    
+    // Extract text color
+    uint8_t txt_r = (textColor >> 24) & 0xFF;
+    uint8_t txt_g = (textColor >> 16) & 0xFF;
+    uint8_t txt_b = (textColor >> 8) & 0xFF;
+    hb_color_t hbTextColor = HB_COLOR(txt_r, txt_g, txt_b, 255);
+    context.foreground = hbTextColor;
+    context.use_foreground_override = false;
+    
+    // Create and shape the text
+    hb_buffer_t* hbBuffer = hb_buffer_create();
+    hb_buffer_set_direction(hbBuffer, HB_DIRECTION_RTL);
+    hb_buffer_set_script(hbBuffer, HB_SCRIPT_ARABIC);
+    hb_buffer_set_language(hbBuffer, renderer->ar_language);
+    
+    hb_buffer_add_utf8(hbBuffer, text, len, 0, len);
+    
+    // Calculate line width in font units
+    double scale = static_cast<double>(fontSize) / renderer->upem;
+    double lineWidth = (targetWidth > 0) ? targetWidth / scale : (buffer->width - 20) / scale;
+    
+    if (justify) {
+        hb_buffer_set_justify(hbBuffer, lineWidth);
+    }
+    
+    // Shape with tajweed disabled for generic text
+    renderer->features[0].value = 0;
+    hb_shape(renderer->font, hbBuffer, renderer->features, 1);
+    
+    // Get glyph data
+    unsigned int count;
+    hb_glyph_info_t* glyph_info = hb_buffer_get_glyph_infos(hbBuffer, &count);
+    hb_glyph_position_t* glyph_pos = hb_buffer_get_glyph_positions(hbBuffer, &count);
+    
+    // Calculate text width
+    int totalWidth = 0;
+    for (unsigned int i = 0; i < count; i++) {
+        totalWidth += glyph_pos[i].x_advance;
+    }
+    
+    // Position text (RTL: start from right)
+    int x_start = buffer->width - 10; // 10px padding from right
+    int y_start = fontSize + 10;      // Baseline position
+    
+    canvas->resetMatrix();
+    canvas->translate(x_start, y_start);
+    canvas->scale(scale, -scale);
+    
+    // Render glyphs
+    for (int i = count - 1; i >= 0; i--) {
+        auto glyph_index = glyph_info[i].codepoint;
+        
+        // Handle variable font coordinates for kashida
+        if (glyph_info[i].lefttatweel != 0 || glyph_info[i].righttatweel != 0) {
+            renderer->coords[0] = roundf(glyph_info[i].lefttatweel * 16384.f);
+            renderer->coords[1] = roundf(glyph_info[i].righttatweel * 16384.f);
+            renderer->font->num_coords = 2;
+            renderer->font->coords = &renderer->coords[0];
+        }
+        
+        canvas->translate(-glyph_pos[i].x_advance, 0);
+        canvas->translate(glyph_pos[i].x_offset, glyph_pos[i].y_offset);
+        
+        hb_font_paint_glyph(renderer->font, glyph_index, renderer->paint_funcs, &context, 0, hbTextColor);
+        
+        canvas->translate(-glyph_pos[i].x_offset, -glyph_pos[i].y_offset);
+        
+        // Reset variable font coords
+        if (glyph_info[i].lefttatweel != 0 || glyph_info[i].righttatweel != 0) {
+            renderer->font->num_coords = 0;
+            renderer->font->coords = nullptr;
+        }
+    }
+    
+    hb_buffer_destroy(hbBuffer);
+    
+    return static_cast<int>(totalWidth * scale);
+}
+
+bool quran_renderer_measure_text(
+    QuranRendererHandle renderer,
+    const char* text,
+    int textLength,
+    int fontSize,
+    int* outWidth,
+    int* outHeight
+) {
+    if (!renderer || !text) {
+        return false;
+    }
+    
+    size_t len = (textLength < 0) ? strlen(text) : static_cast<size_t>(textLength);
+    if (len == 0) {
+        if (outWidth) *outWidth = 0;
+        if (outHeight) *outHeight = fontSize;
+        return true;
+    }
+    
+    // Create and shape the text
+    hb_buffer_t* hbBuffer = hb_buffer_create();
+    hb_buffer_set_direction(hbBuffer, HB_DIRECTION_RTL);
+    hb_buffer_set_script(hbBuffer, HB_SCRIPT_ARABIC);
+    hb_buffer_set_language(hbBuffer, renderer->ar_language);
+    
+    hb_buffer_add_utf8(hbBuffer, text, len, 0, len);
+    
+    renderer->features[0].value = 0;
+    hb_shape(renderer->font, hbBuffer, renderer->features, 1);
+    
+    // Get glyph data
+    unsigned int count;
+    hb_glyph_position_t* glyph_pos = hb_buffer_get_glyph_positions(hbBuffer, &count);
+    
+    // Calculate width
+    int totalWidth = 0;
+    for (unsigned int i = 0; i < count; i++) {
+        totalWidth += glyph_pos[i].x_advance;
+    }
+    
+    double scale = static_cast<double>(fontSize) / renderer->upem;
+    
+    if (outWidth) *outWidth = static_cast<int>(totalWidth * scale);
+    if (outHeight) *outHeight = fontSize;
+    
+    hb_buffer_destroy(hbBuffer);
+    
+    return true;
+}
+
+int quran_renderer_draw_multiline_text(
+    QuranRendererHandle renderer,
+    QuranPixelBuffer* buffer,
+    const char* text,
+    int textLength,
+    const QuranTextConfig* config,
+    float lineSpacing
+) {
+    if (!renderer || !buffer || !buffer->pixels || !text) {
+        return -1;
+    }
+    
+    size_t len = (textLength < 0) ? strlen(text) : static_cast<size_t>(textLength);
+    if (len == 0) {
+        return 0;
+    }
+    
+    // Default configuration
+    int fontSize = config ? config->fontSize : 48;
+    uint32_t bgColor = config ? config->backgroundColor : 0xFFFFFFFF;
+    float spacing = (lineSpacing > 0) ? lineSpacing : 1.2f;
+    
+    // Set up Skia canvas and clear background
+    SkImageInfo imageInfo = SkImageInfo::Make(
+        buffer->width, buffer->height, 
+        kRGBA_8888_SkColorType, kPremul_SkAlphaType
+    );
+    auto canvas = SkCanvas::MakeRasterDirect(imageInfo, buffer->pixels, buffer->stride);
+    
+    uint8_t bg_r = (bgColor >> 24) & 0xFF;
+    uint8_t bg_g = (bgColor >> 16) & 0xFF;
+    uint8_t bg_b = (bgColor >> 8) & 0xFF;
+    uint8_t bg_a = bgColor & 0xFF;
+    canvas->drawColor(SkColorSetARGB(bg_a, bg_r, bg_g, bg_b));
+    
+    // Split text by newlines
+    std::string fullText(text, len);
+    std::vector<std::string> lines;
+    std::istringstream stream(fullText);
+    std::string line;
+    while (std::getline(stream, line)) {
+        lines.push_back(line);
+    }
+    
+    // Create sub-config for each line
+    QuranTextConfig lineConfig = config ? *config : QuranTextConfig{};
+    lineConfig.fontSize = fontSize;
+    lineConfig.backgroundColor = 0x00000000; // Transparent (already cleared)
+    
+    int lineHeight = static_cast<int>(fontSize * spacing);
+    int yOffset = 0;
+    
+    for (size_t i = 0; i < lines.size(); i++) {
+        if (lines[i].empty()) {
+            yOffset += lineHeight;
+            continue;
+        }
+        
+        // Create a sub-buffer for this line (share the same pixel data)
+        QuranPixelBuffer lineBuffer = *buffer;
+        lineBuffer.pixels = static_cast<uint8_t*>(buffer->pixels) + (yOffset * buffer->stride);
+        lineBuffer.height = buffer->height - yOffset;
+        
+        if (lineBuffer.height <= 0) break;
+        
+        quran_renderer_draw_text(renderer, &lineBuffer, lines[i].c_str(), -1, &lineConfig);
+        
+        yOffset += lineHeight;
+    }
+    
+    return static_cast<int>(lines.size());
+}
+
 } // extern "C"

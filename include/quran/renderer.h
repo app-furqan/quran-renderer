@@ -173,6 +173,83 @@ bool quran_renderer_get_page_location(int pageIndex, QuranAyahLocation* location
  */
 int quran_renderer_get_ayah_count(int surahNumber);
 
+/* ============================================================================
+ * Generic Arabic Text Rendering API
+ * ============================================================================ */
+
+/**
+ * Configuration for rendering arbitrary Arabic text
+ */
+typedef struct {
+    int fontSize;           // Font size in pixels
+    uint32_t textColor;     // Text color in RGBA format (0xRRGGBBAA)
+    uint32_t backgroundColor; // Background color in RGBA format (0xRRGGBBAA)
+    bool justify;           // Enable kashida justification to fill width
+    float lineWidth;        // Target line width (0 = auto-fit to buffer width)
+    bool rightToLeft;       // Text direction (true for Arabic, default true)
+} QuranTextConfig;
+
+/**
+ * Render arbitrary Arabic text to a pixel buffer
+ * 
+ * This function uses the same HarfBuzz + Skia rendering pipeline as the
+ * Quran page renderer, but accepts any UTF-8 Arabic text string.
+ * 
+ * @param renderer Renderer handle (must be initialized with font data)
+ * @param buffer Pixel buffer to render into
+ * @param text UTF-8 encoded Arabic text to render
+ * @param textLength Length of text in bytes (or -1 for null-terminated)
+ * @param config Text rendering configuration
+ * @return Width of rendered text in pixels, or -1 on error
+ */
+int quran_renderer_draw_text(
+    QuranRendererHandle renderer,
+    QuranPixelBuffer* buffer,
+    const char* text,
+    int textLength,
+    const QuranTextConfig* config
+);
+
+/**
+ * Measure Arabic text without rendering
+ * 
+ * @param renderer Renderer handle
+ * @param text UTF-8 encoded Arabic text
+ * @param textLength Length of text in bytes (or -1 for null-terminated)
+ * @param fontSize Font size in pixels
+ * @param outWidth Output: text width in pixels
+ * @param outHeight Output: text height in pixels
+ * @return true on success
+ */
+bool quran_renderer_measure_text(
+    QuranRendererHandle renderer,
+    const char* text,
+    int textLength,
+    int fontSize,
+    int* outWidth,
+    int* outHeight
+);
+
+/**
+ * Render multi-line Arabic text with automatic line breaking
+ * 
+ * @param renderer Renderer handle
+ * @param buffer Pixel buffer to render into
+ * @param text UTF-8 encoded Arabic text (can contain newlines)
+ * @param textLength Length of text in bytes (or -1 for null-terminated)
+ * @param config Text rendering configuration
+ * @param lineSpacing Line spacing multiplier (1.0 = single space, 1.5 = 1.5x, etc.)
+ * @return Number of lines rendered, or -1 on error
+ */
+int quran_renderer_draw_multiline_text(
+    QuranRendererHandle renderer,
+    QuranPixelBuffer* buffer,
+    const char* text,
+    int textLength,
+    const QuranTextConfig* config,
+    float lineSpacing
+);
+
 #ifdef __cplusplus
 }
 #endif
