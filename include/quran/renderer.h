@@ -291,6 +291,29 @@ int quran_renderer_draw_multiline_text(
     float lineSpacing
 );
 
+/**
+ * Render Arabic text with automatic word-wrapping
+ * 
+ * Automatically breaks text at word boundaries to fit within lineWidth.
+ * Words are determined by spaces. Long text flows onto multiple visual lines.
+ * 
+ * @param renderer Renderer handle
+ * @param buffer Pixel buffer to render into
+ * @param text UTF-8 encoded Arabic text
+ * @param textLength Length of text in bytes (or -1 for null-terminated)
+ * @param config Text rendering configuration (lineWidth controls wrap width)
+ * @param lineSpacing Line spacing multiplier (0 = auto 1.5x, 1.0 = single, etc.)
+ * @return Number of lines rendered, or -1 on error
+ */
+int quran_renderer_draw_wrapped_text(
+    QuranRendererHandle renderer,
+    QuranPixelBuffer* buffer,
+    const char* text,
+    int textLength,
+    const QuranTextConfig* config,
+    float lineSpacing
+);
+
 #ifdef __cplusplus
 }
 #endif

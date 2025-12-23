@@ -881,4 +881,148 @@ int quran_renderer_draw_multiline_text(
     return static_cast<int>(lines.size());
 }
 
+// Helper: split UTF-8 string by spaces while preserving Arabic text integrity
+static std::vector<std::string> splitIntoWords(const char* text, size_t len) {
+    std::vector<std::string> words;
+    std::string current;
+    
+    for (size_t i = 0; i < len; ) {
+        unsigned char c = static_cast<unsigned char>(text[i]);
+        
+        // Check for space (ASCII space or Arabic space)
+        if (c == ' ' || c == '\t') {
+            if (!current.empty()) {
+                words.push_back(current);
+                current.clear();
+            }
+            i++;
+        } else {
+            // UTF-8 character: determine byte count
+            int charBytes = 1;
+            if ((c & 0xF8) == 0xF0) charBytes = 4;      // 4-byte UTF-8
+            else if ((c & 0xF0) == 0xE0) charBytes = 3; // 3-byte UTF-8
+            else if ((c & 0xE0) == 0xC0) charBytes = 2; // 2-byte UTF-8
+            
+            // Append full UTF-8 character
+            for (int j = 0; j < charBytes && i + j < len; j++) {
+                current += text[i + j];
+            }
+            i += charBytes;
+        }
+    }
+    
+    if (!current.empty()) {
+        words.push_back(current);
+    }
+    
+    return words;
+}
+
+int quran_renderer_draw_wrapped_text(
+    QuranRendererHandle renderer,
+    QuranPixelBuffer* buffer,
+    const char* text,
+    int textLength,
+    const QuranTextConfig* config,
+    float lineSpacing
+) {
+    if (!renderer || !buffer || !buffer->pixels || !text) {
+        return -1;
+    }
+    
+    size_t len = (textLength < 0) ? strlen(text) : static_cast<size_t>(textLength);
+    if (len == 0) {
+        return 0;
+    }
+    
+    // Extract configuration
+    uint32_t bgColor = config ? config->backgroundColor : 0xFFFFFFFF;
+    int fontSize = config ? config->fontSize : 0;
+    if (fontSize <= 0) fontSize = 48;
+    
+    float maxLineWidth = config ? config->lineWidth : 0;
+    if (maxLineWidth <= 0) maxLineWidth = buffer->width - 20.0f;
+    
+    float spacing = (lineSpacing > 0) ? lineSpacing : 1.5f;
+    
+    // Set up Skia canvas and clear background
+    SkImageInfo imageInfo = SkImageInfo::Make(
+        buffer->width, buffer->height, 
+        kRGBA_8888_SkColorType, kPremul_SkAlphaType
+    );
+    auto canvas = SkCanvas::MakeRasterDirect(imageInfo, buffer->pixels, buffer->stride);
+    
+    uint8_t bg_r = (bgColor >> 24) & 0xFF;
+    uint8_t bg_g = (bgColor >> 16) & 0xFF;
+    uint8_t bg_b = (bgColor >> 8) & 0xFF;
+    uint8_t bg_a = bgColor & 0xFF;
+    canvas->drawColor(SkColorSetARGB(bg_a, bg_r, bg_g, bg_b));
+    
+    // Split text into words
+    std::vector<std::string> words = splitIntoWords(text, len);
+    
+    // Build lines by measuring and wrapping
+    std::vector<std::string> lines;
+    std::string currentLine;
+    int currentLineWidth = 0;
+    
+    // Space width for joining words
+    int spaceWidth = 0;
+    quran_renderer_measure_text(renderer, " ", 1, fontSize, &spaceWidth, nullptr);
+    
+    for (const auto& word : words) {
+        int wordWidth = 0;
+        quran_renderer_measure_text(renderer, word.c_str(), word.length(), fontSize, &wordWidth, nullptr);
+        
+        if (currentLine.empty()) {
+            // First word on line
+            currentLine = word;
+            currentLineWidth = wordWidth;
+        } else {
+            // Check if word fits on current line
+            int newWidth = currentLineWidth + spaceWidth + wordWidth;
+            if (newWidth <= maxLineWidth) {
+                // Fits - add with space
+                currentLine += " " + word;
+                currentLineWidth = newWidth;
+            } else {
+                // Doesn't fit - start new line
+                lines.push_back(currentLine);
+                currentLine = word;
+                currentLineWidth = wordWidth;
+            }
+        }
+    }
+    
+    // Don't forget last line
+    if (!currentLine.empty()) {
+        lines.push_back(currentLine);
+    }
+    
+    // Create sub-config for rendering
+    QuranTextConfig lineConfig = config ? *config : QuranTextConfig{};
+    lineConfig.fontSize = fontSize;
+    lineConfig.backgroundColor = 0x00000000; // Transparent
+    if (config && config->textColor == 0) {
+        lineConfig.textColor = isDarkBackground(bgColor) ? 0xFFFFFFFF : 0x000000FF;
+    }
+    
+    int lineHeight = static_cast<int>(fontSize * spacing);
+    int yOffset = 0;
+    
+    for (size_t i = 0; i < lines.size(); i++) {
+        QuranPixelBuffer lineBuffer = *buffer;
+        lineBuffer.pixels = static_cast<uint8_t*>(buffer->pixels) + (yOffset * buffer->stride);
+        lineBuffer.height = buffer->height - yOffset;
+        
+        if (lineBuffer.height <= 0) break;
+        
+        quran_renderer_draw_text(renderer, &lineBuffer, lines[i].c_str(), -1, &lineConfig);
+        
+        yOffset += lineHeight;
+    }
+    
+    return static_cast<int>(lines.size());
+}
+
 } // extern "C"
