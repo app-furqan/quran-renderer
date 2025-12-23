@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <algorithm>
 
 // Suppress Skia header warnings
 #pragma GCC diagnostic push
@@ -977,9 +978,19 @@ int quran_renderer_draw_wrapped_text(
     std::string currentLine;
     int currentLineWidth = 0;
     
-    // Space width for joining words
+    // Calculate space width - use a typical Arabic word separator width
+    // Measure a word with and without space to get accurate space width
     int spaceWidth = 0;
-    quran_renderer_measure_text(renderer, " ", 1, fontSize, &spaceWidth, nullptr);
+    {
+        int withSpace = 0, withoutSpace = 0;
+        quran_renderer_measure_text(renderer, "ا ب", -1, fontSize, &withSpace, nullptr);
+        quran_renderer_measure_text(renderer, "اب", -1, fontSize, &withoutSpace, nullptr);
+        spaceWidth = withSpace - withoutSpace;
+        if (spaceWidth <= 0) {
+            // Fallback: estimate space as ~25% of fontSize
+            spaceWidth = fontSize / 4;
+        }
+    }
     
     for (const auto& word : words) {
         int wordWidth = 0;
@@ -1018,15 +1029,20 @@ int quran_renderer_draw_wrapped_text(
         lineConfig.textColor = isDarkBackground(bgColor) ? 0xFFFFFFFF : 0x000000FF;
     }
     
-    int lineHeight = static_cast<int>(fontSize * spacing);
+    // Line height must accommodate the full glyph height plus spacing
+    // Arabic text can have marks above and below, so use ~1.3x fontSize as base height
+    int baseLineHeight = static_cast<int>(fontSize * 1.3f);
+    int lineHeight = static_cast<int>(baseLineHeight * spacing);
     int yOffset = 0;
     
     for (size_t i = 0; i < lines.size(); i++) {
+        // Ensure sub-buffer has enough height for the text
+        int neededHeight = fontSize + 20;  // fontSize + padding for marks
+        if (buffer->height - yOffset < neededHeight) break;
+        
         QuranPixelBuffer lineBuffer = *buffer;
         lineBuffer.pixels = static_cast<uint8_t*>(buffer->pixels) + (yOffset * buffer->stride);
-        lineBuffer.height = buffer->height - yOffset;
-        
-        if (lineBuffer.height <= 0) break;
+        lineBuffer.height = std::min(neededHeight, buffer->height - yOffset);
         
         quran_renderer_draw_text(renderer, &lineBuffer, lines[i].c_str(), -1, &lineConfig);
         
