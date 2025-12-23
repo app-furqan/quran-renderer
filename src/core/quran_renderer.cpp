@@ -63,6 +63,27 @@ struct QuranLine {
     JustType just_type = JustType::just;
 };
 
+// Calculate relative luminance of a color (0.0 = black, 1.0 = white)
+// Uses sRGB luminance formula: https://www.w3.org/TR/WCAG20/#relativeluminancedef
+inline float calculateLuminance(uint8_t r, uint8_t g, uint8_t b) {
+    return (0.299f * r + 0.587f * g + 0.114f * b) / 255.0f;
+}
+
+// Determine if background is dark (luminance < 0.5)
+inline bool isDarkBackground(uint32_t backgroundColor) {
+    uint8_t r = (backgroundColor >> 24) & 0xFF;
+    uint8_t g = (backgroundColor >> 16) & 0xFF;
+    uint8_t b = (backgroundColor >> 8) & 0xFF;
+    return calculateLuminance(r, g, b) < 0.5f;
+}
+
+// Get appropriate text color for background
+inline hb_color_t getTextColorForBackground(uint32_t backgroundColor) {
+    return isDarkBackground(backgroundColor) 
+        ? HB_COLOR(255, 255, 255, 255)  // White text for dark backgrounds
+        : HB_COLOR(0, 0, 0, 255);        // Black text for light backgrounds
+}
+
 } // anonymous namespace
 
 struct QuranRendererImpl {
@@ -390,6 +411,9 @@ struct QuranRendererImpl {
             y_start = y_start + 3.5 * inter_line;
         }
         
+        // Compute text color based on background luminance
+        hb_color_t textColor = getTextColorForBackground(backgroundColor);
+        
         for (size_t lineIndex = 0; lineIndex < pageText.size(); lineIndex++) {
             canvas->resetMatrix();
             
@@ -406,7 +430,7 @@ struct QuranRendererImpl {
             canvas->scale(scale, -scale);
             
             auto& linetext = pageText[lineIndex];
-            drawLine(linetext, &context, lineWidth, justify, scale);
+            drawLine(linetext, &context, lineWidth, justify, scale, textColor);
         }
     }
     
@@ -593,10 +617,18 @@ int quran_renderer_draw_text(
     
     // Default configuration
     int fontSize = config ? config->fontSize : 48;
-    uint32_t textColor = config ? config->textColor : 0x000000FF;
     uint32_t bgColor = config ? config->backgroundColor : 0xFFFFFFFF;
     bool justify = config ? config->justify : false;
     float targetWidth = config ? config->lineWidth : 0;
+    
+    // Auto-detect text color if not specified (0 means auto)
+    uint32_t textColor;
+    if (config && config->textColor != 0) {
+        textColor = config->textColor;
+    } else {
+        // Auto: white text for dark backgrounds, black for light
+        textColor = isDarkBackground(bgColor) ? 0xFFFFFFFF : 0x000000FF;
+    }
     
     // Set up Skia canvas
     SkImageInfo imageInfo = SkImageInfo::Make(
