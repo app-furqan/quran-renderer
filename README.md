@@ -1846,6 +1846,7 @@ printf("Rendered %d lines\n", linesRendered);
 | `justify` | `bool` | Enable kashida justification to fill line width | N/A (default: `false`) |
 | `lineWidth` | `float` | Target line width in pixels | `0` = use buffer width minus padding |
 | `rightToLeft` | `bool` | Text direction (true for Arabic) | N/A (default: `true`) |
+| `tajweed` | `bool` | Enable tajweed coloring | N/A (default: `true`) |
 
 ### Auto-Detection Constants
 

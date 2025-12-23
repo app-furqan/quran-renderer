@@ -690,8 +690,9 @@ int quran_renderer_draw_text(
         hb_buffer_set_justify(hbBuffer, lineWidth);
     }
     
-    // Shape with tajweed disabled for generic text
-    renderer->features[0].value = 0;
+    // Shape with tajweed based on config (default: enabled)
+    bool useTajweed = config ? config->tajweed : true;
+    renderer->features[0].value = useTajweed ? 1 : 0;
     hb_shape(renderer->font, hbBuffer, renderer->features, 1);
     
     // Get glyph data
@@ -771,7 +772,8 @@ bool quran_renderer_measure_text(
     
     hb_buffer_add_utf8(hbBuffer, text, len, 0, len);
     
-    renderer->features[0].value = 0;
+    // Tajweed doesn't affect measurement, but keep consistent
+    renderer->features[0].value = 1;
     hb_shape(renderer->font, hbBuffer, renderer->features, 1);
     
     // Get glyph data

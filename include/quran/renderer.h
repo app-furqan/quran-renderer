@@ -203,6 +203,7 @@ typedef struct {
     bool justify;             // Enable kashida justification to fill lineWidth
     float lineWidth;          // Target line width in pixels (0 = QURAN_LINE_WIDTH_AUTO)
     bool rightToLeft;         // Text direction (true for Arabic, default: true)
+    bool tajweed;             // Enable tajweed coloring (default: true)
 } QuranTextConfig;
 
 /**
@@ -215,6 +216,7 @@ typedef struct {
  * - justify: false
  * - lineWidth: 0 (auto - use buffer width)
  * - rightToLeft: true
+ * - tajweed: true (enabled by default)
  */
 static inline QuranTextConfig quran_text_config_default(void) {
     QuranTextConfig config = {0};
@@ -224,6 +226,7 @@ static inline QuranTextConfig quran_text_config_default(void) {
     config.justify = false;
     config.lineWidth = QURAN_LINE_WIDTH_AUTO;
     config.rightToLeft = true;
+    config.tajweed = true;  // Tajweed coloring enabled by default
     return config;
 }
 
