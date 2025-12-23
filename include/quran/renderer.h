@@ -178,16 +178,54 @@ int quran_renderer_get_ayah_count(int surahNumber);
  * ============================================================================ */
 
 /**
+ * Special values for auto-detection in QuranTextConfig
+ */
+#define QURAN_TEXT_COLOR_AUTO       0           // Auto-detect text color based on background luminance
+#define QURAN_FONT_SIZE_AUTO        0           // Auto-calculate font size to fit line width
+#define QURAN_LINE_WIDTH_AUTO       0.0f        // Use buffer width as line width
+#define QURAN_LINE_SPACING_AUTO     0.0f        // Use default 1.5x line spacing
+
+/**
  * Configuration for rendering arbitrary Arabic text
+ * 
+ * All fields support "auto" values:
+ * - fontSize: 0 = auto-calculate based on lineWidth (default: 48 if both are auto)
+ * - textColor: 0 = auto-detect based on background luminance (white on dark, black on light)
+ * - backgroundColor: Set explicitly (no auto, default: white 0xFFFFFFFF)
+ * - justify: Explicit true/false (no auto)
+ * - lineWidth: 0 = use buffer width minus padding
+ * - rightToLeft: Explicit true/false (default: true for Arabic)
  */
 typedef struct {
-    int fontSize;           // Font size in pixels
-    uint32_t textColor;     // Text color in RGBA format (0xRRGGBBAA)
-    uint32_t backgroundColor; // Background color in RGBA format (0xRRGGBBAA)
-    bool justify;           // Enable kashida justification to fill width
-    float lineWidth;        // Target line width (0 = auto-fit to buffer width)
-    bool rightToLeft;       // Text direction (true for Arabic, default true)
+    int fontSize;             // Font size in pixels (0 = QURAN_FONT_SIZE_AUTO)
+    uint32_t textColor;       // Text color 0xRRGGBBAA (0 = QURAN_TEXT_COLOR_AUTO)
+    uint32_t backgroundColor; // Background color 0xRRGGBBAA (default: 0xFFFFFFFF white)
+    bool justify;             // Enable kashida justification to fill lineWidth
+    float lineWidth;          // Target line width in pixels (0 = QURAN_LINE_WIDTH_AUTO)
+    bool rightToLeft;         // Text direction (true for Arabic, default: true)
 } QuranTextConfig;
+
+/**
+ * Create a default QuranTextConfig with sensible auto values
+ * 
+ * Returns a config with:
+ * - fontSize: 0 (auto)
+ * - textColor: 0 (auto - white on dark, black on light)
+ * - backgroundColor: 0xFFFFFFFF (white)
+ * - justify: false
+ * - lineWidth: 0 (auto - use buffer width)
+ * - rightToLeft: true
+ */
+static inline QuranTextConfig quran_text_config_default(void) {
+    QuranTextConfig config = {0};
+    config.fontSize = QURAN_FONT_SIZE_AUTO;
+    config.textColor = QURAN_TEXT_COLOR_AUTO;
+    config.backgroundColor = 0xFFFFFFFF;  // White background
+    config.justify = false;
+    config.lineWidth = QURAN_LINE_WIDTH_AUTO;
+    config.rightToLeft = true;
+    return config;
+}
 
 /**
  * Render arbitrary Arabic text to a pixel buffer

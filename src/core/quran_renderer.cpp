@@ -615,11 +615,23 @@ int quran_renderer_draw_text(
         return 0;
     }
     
-    // Default configuration
-    int fontSize = config ? config->fontSize : 48;
+    // Extract configuration with defaults for auto (0) values
     uint32_t bgColor = config ? config->backgroundColor : 0xFFFFFFFF;
     bool justify = config ? config->justify : false;
     float targetWidth = config ? config->lineWidth : 0;
+    
+    // Auto line width: use buffer width minus padding
+    if (targetWidth <= 0) {
+        targetWidth = buffer->width - 20.0f;  // 10px padding on each side
+    }
+    
+    // Auto font size: calculate based on line width or use default
+    int fontSize = config ? config->fontSize : 0;
+    if (fontSize <= 0) {
+        // Default to 48px if no other hint available
+        // Could be enhanced to auto-fit based on text length
+        fontSize = 48;
+    }
     
     // Auto-detect text color if not specified (0 means auto)
     uint32_t textColor;
@@ -799,10 +811,17 @@ int quran_renderer_draw_multiline_text(
         return 0;
     }
     
-    // Default configuration
-    int fontSize = config ? config->fontSize : 48;
+    // Extract configuration with defaults for auto (0) values
     uint32_t bgColor = config ? config->backgroundColor : 0xFFFFFFFF;
-    float spacing = (lineSpacing > 0) ? lineSpacing : 1.2f;
+    
+    // Auto font size
+    int fontSize = config ? config->fontSize : 0;
+    if (fontSize <= 0) {
+        fontSize = 48;  // Default
+    }
+    
+    // Auto line spacing (0 = 1.5x default)
+    float spacing = (lineSpacing > 0) ? lineSpacing : 1.5f;
     
     // Set up Skia canvas and clear background
     SkImageInfo imageInfo = SkImageInfo::Make(
@@ -826,11 +845,16 @@ int quran_renderer_draw_multiline_text(
         lines.push_back(line);
     }
     
-    // Create sub-config for each line
+    // Create sub-config for each line - preserve auto values so draw_text handles them
     QuranTextConfig lineConfig = config ? *config : QuranTextConfig{};
-    lineConfig.fontSize = fontSize;
-    lineConfig.backgroundColor = 0x00000000; // Transparent (already cleared)
-    
+    lineConfig.fontSize = fontSize;  // Use resolved font size
+    lineConfig.backgroundColor = 0x00000000; // Transparent (background already cleared)
+    // Keep textColor as-is (0 = auto will be resolved in draw_text based on original bgColor)
+    if (config && config->textColor == 0) {
+        // For auto text color, resolve it here based on the actual background
+        lineConfig.textColor = isDarkBackground(bgColor) ? 0xFFFFFFFF : 0x000000FF;
+    }
+
     int lineHeight = static_cast<int>(fontSize * spacing);
     int yOffset = 0;
     

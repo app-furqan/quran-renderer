@@ -1758,15 +1758,13 @@ int main() {
         .format = QURAN_PIXEL_FORMAT_RGBA8888
     };
     
-    // Configure text rendering
-    QuranTextConfig config = {
-        .fontSize = 64,                // Font size in pixels
-        .textColor = 0x000000FF,       // Black text (RGBA)
-        .backgroundColor = 0xFFFFFFFF, // White background (RGBA)
-        .justify = true,               // Enable kashida justification
-        .lineWidth = 0,                // Auto-fit to buffer width
-        .rightToLeft = true            // Arabic is RTL
-    };
+    // Configure text rendering - use auto values where appropriate
+    QuranTextConfig config = quran_text_config_default();
+    config.fontSize = 64;                  // Font size in pixels
+    config.backgroundColor = 0x000000FF;   // Black background (RGBA)
+    // textColor = 0 (auto) → white text on dark background
+    config.justify = true;                 // Enable kashida justification
+    // lineWidth = 0 (auto) → fits buffer width
     
     // Render ANY Arabic text!
     const char* arabicText = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ";
@@ -1840,14 +1838,35 @@ printf("Rendered %d lines\n", linesRendered);
 
 ### QuranTextConfig Structure
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `fontSize` | `int` | Font size in pixels |
-| `textColor` | `uint32_t` | Text color in RGBA format (0xRRGGBBAA) |
-| `backgroundColor` | `uint32_t` | Background color in RGBA format (0xRRGGBBAA) |
-| `justify` | `bool` | Enable kashida justification to fill line width |
-| `lineWidth` | `float` | Target line width (0 = auto-fit to buffer width) |
-| `rightToLeft` | `bool` | Text direction (true for Arabic) |
+| Field | Type | Description | Auto Value |
+|-------|------|-------------|------------|
+| `fontSize` | `int` | Font size in pixels | `0` = 48px default |
+| `textColor` | `uint32_t` | Text color in RGBA format (0xRRGGBBAA) | `0` = auto (white on dark bg, black on light bg) |
+| `backgroundColor` | `uint32_t` | Background color in RGBA format (0xRRGGBBAA) | N/A (default: `0xFFFFFFFF` white) |
+| `justify` | `bool` | Enable kashida justification to fill line width | N/A (default: `false`) |
+| `lineWidth` | `float` | Target line width in pixels | `0` = use buffer width minus padding |
+| `rightToLeft` | `bool` | Text direction (true for Arabic) | N/A (default: `true`) |
+
+### Auto-Detection Constants
+
+```c
+#define QURAN_TEXT_COLOR_AUTO       0       // Auto-detect text color based on background
+#define QURAN_FONT_SIZE_AUTO        0       // Use default font size (48px)
+#define QURAN_LINE_WIDTH_AUTO       0.0f    // Use buffer width as line width
+#define QURAN_LINE_SPACING_AUTO     0.0f    // Use default 1.5x line spacing
+```
+
+### Convenience: Default Config
+
+```c
+// Get a fully-initialized config with sensible defaults
+QuranTextConfig config = quran_text_config_default();
+
+// Then customize only what you need:
+config.fontSize = 72;
+config.backgroundColor = 0x000000FF;  // Black background
+// textColor stays 0 (auto) → will be white on this dark background
+```
 
 ### Key Features for Generic Text
 
