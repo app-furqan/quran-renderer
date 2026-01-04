@@ -387,7 +387,7 @@ build_library_platform() {
         -DCMAKE_BUILD_TYPE=Release
         -DBUILD_SHARED_LIBS=OFF
         -DHARFBUZZ_INCLUDE_DIR="$DEPS_DIR/harfbuzz/src"
-        -DHARFBUZZ_LIBRARY_DIR="$DEPS_DIR/harfbuzz-build-$PLATFORM-$ARCH/src"
+        -DHARFBUZZ_LIBRARY_DIR="$DEPS_DIR/harfbuzz-build-$PLATFORM-$ARCH"
         -DSKIA_INCLUDE_DIR="$DEPS_DIR/skia"
         -DSKIA_LIBRARY_DIR="$DEPS_DIR/skia/out/$PLATFORM-$ARCH"
         -DQURAN_TEXT_DIR="$DEPS_DIR/visualmetafont/src/qurantext"

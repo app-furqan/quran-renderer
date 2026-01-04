@@ -88,10 +88,28 @@ endif()
 # Android's Bionic has pthreads built-in, no separate library needed
 if(ANDROID)
     target_link_libraries(quran_renderer PRIVATE log)
+elseif(APPLE)
+    # Apple frameworks required by Skia and HarfBuzz
+    find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+    find_library(CORETEXT_FRAMEWORK CoreText REQUIRED)
+    find_library(COREGRAPHICS_FRAMEWORK CoreGraphics REQUIRED)
+    find_library(APPLICATIONSERVICES_FRAMEWORK ApplicationServices)
+    target_link_libraries(quran_renderer PRIVATE 
+        ${COREFOUNDATION_FRAMEWORK}
+        ${CORETEXT_FRAMEWORK}
+        ${COREGRAPHICS_FRAMEWORK}
+    )
+    if(APPLICATIONSERVICES_FRAMEWORK)
+        target_link_libraries(quran_renderer PRIVATE ${APPLICATIONSERVICES_FRAMEWORK})
+    endif()
 else()
     target_link_libraries(quran_renderer PRIVATE pthread)
 endif()
-target_link_libraries(quran_renderer PRIVATE dl)
+
+# dl is not available on all platforms
+if(NOT APPLE AND NOT WIN32)
+    target_link_libraries(quran_renderer PRIVATE dl)
+endif()
 
 # Set output name
 set_target_properties(quran_renderer PROPERTIES
