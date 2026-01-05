@@ -313,7 +313,9 @@ struct QuranRendererImpl {
                 canvas->translate(-glyph_pos[i].x_advance, 0);
             }
             
-            canvas->translate(glyph_pos[i].x_offset, -glyph_pos[i].y_offset);
+            // Apply glyph offset for proper vowel mark positioning (hamza, harakat, etc.)
+            // Match mushaf-android: use y_offset directly without negation
+            canvas->translate(glyph_pos[i].x_offset, glyph_pos[i].y_offset);
             
             // Tajweed color handling:
             // DigitalKhatt fonts can encode tajweed colors in two ways:
@@ -341,6 +343,7 @@ struct QuranRendererImpl {
             }
             hb_font_paint_glyph(font, glyph_index, paint_funcs, context, 0, color);
             
+            // Reverse the offset translation (negate both x and y)
             canvas->translate(-glyph_pos[i].x_offset, -glyph_pos[i].y_offset);
             
             if (extend) {
