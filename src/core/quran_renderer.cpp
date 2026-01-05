@@ -329,20 +329,16 @@ struct QuranRendererImpl {
             // https://github.com/DigitalKhatt/digitalkhatt.org/blob/master/ClientApp/src/app/services/tajweed.service.ts
             
             auto color = defaultTextColor; // Use computed text color based on background
-            if (tajweed && glyph_pos[i].base_codepoint != 0) {
-                // Check if base_codepoint contains color data (non-zero RGB values)
-                uint8_t r = (glyph_pos[i].base_codepoint >> 8) & 0xff;
-                uint8_t g = (glyph_pos[i].base_codepoint >> 16) & 0xff;
-                uint8_t b = (glyph_pos[i].base_codepoint >> 24) & 0xff;
-                
-                // Only apply color if at least one channel is non-zero
-                if (r != 0 || g != 0 || b != 0) {
-                    color = HB_COLOR(r, g, b, 255);
-                }
+            // Tajweed color check: lookup_index >= tajweedcolorindex indicates a tajweed lookup was applied
+            // and base_codepoint contains the RGB color encoded by HarfBuzz during GPOS processing
+            if (tajweed && glyph_pos[i].lookup_index >= tajweedcolorindex) {
+                color = HB_COLOR(
+                    (glyph_pos[i].base_codepoint >> 8) & 0xff,
+                    (glyph_pos[i].base_codepoint >> 16) & 0xff,
+                    (glyph_pos[i].base_codepoint >> 24) & 0xff,
+                    255
+                );
             }
-            // CRITICAL: Set foreground before painting. When HarfBuzz calls the paint callback
-            // with use_foreground=true, it uses context->foreground instead of the passed color.
-            context->foreground = color;
             hb_font_paint_glyph(font, glyph_index, paint_funcs, context, 0, color);
             
             canvas->translate(-glyph_pos[i].x_offset, -glyph_pos[i].y_offset);
@@ -750,20 +746,17 @@ int quran_renderer_draw_text(
         canvas->translate(-glyph_pos[i].x_advance, 0);
         canvas->translate(glyph_pos[i].x_offset, -glyph_pos[i].y_offset);
         
-        // Handle tajweed colors from base_codepoint (embedded by HarfBuzz during shaping)
+        // Handle tajweed colors: lookup_index >= 152 indicates tajweed lookup was applied
         hb_color_t glyphColor = hbTextColor;
-        if (useTajweed && glyph_pos[i].base_codepoint != 0) {
-            uint8_t r = (glyph_pos[i].base_codepoint >> 8) & 0xff;
-            uint8_t g = (glyph_pos[i].base_codepoint >> 16) & 0xff;
-            uint8_t b = (glyph_pos[i].base_codepoint >> 24) & 0xff;
-            if (r != 0 || g != 0 || b != 0) {
-                glyphColor = HB_COLOR(r, g, b, 255);
-            }
+        if (useTajweed && glyph_pos[i].lookup_index >= 152) {
+            glyphColor = HB_COLOR(
+                (glyph_pos[i].base_codepoint >> 8) & 0xff,
+                (glyph_pos[i].base_codepoint >> 16) & 0xff,
+                (glyph_pos[i].base_codepoint >> 24) & 0xff,
+                255
+            );
         }
         
-        // CRITICAL: Set foreground before painting. When HarfBuzz calls the paint callback
-        // with use_foreground=true, it uses context.foreground instead of the passed color.
-        context.foreground = glyphColor;
         hb_font_paint_glyph(renderer->font, glyph_index, renderer->paint_funcs, &context, 0, glyphColor);
         
         canvas->translate(-glyph_pos[i].x_offset, -glyph_pos[i].y_offset);

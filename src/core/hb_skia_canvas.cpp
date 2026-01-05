@@ -139,17 +139,13 @@ hb_skia_paint_color (hb_paint_funcs_t *pfuncs HB_UNUSED,
 {
     skia_context_t *c = (skia_context_t *) paint_data;
     
-    // HarfBuzz paint semantics:
-    // - If use_foreground is true, paint should use the foreground color 
-    //   (which carries our tajweed color for this glyph).
-    // - Otherwise use the explicit COLR palette color (which may also be tajweed).
-    hb_color_t final_color = use_foreground ? c->foreground : color;
-    
+    // Always use the passed color directly (matches mushaf-android behavior).
+    // The color parameter already contains the tajweed color when applicable.
     c->paint->setColor(SkColorSetARGB(
-        hb_color_get_alpha(final_color), 
-        hb_color_get_red(final_color), 
-        hb_color_get_green(final_color), 
-        hb_color_get_blue(final_color)
+        hb_color_get_alpha(color), 
+        hb_color_get_red(color), 
+        hb_color_get_green(color), 
+        hb_color_get_blue(color)
     ));
     c->canvas->drawPath(c->path, *c->paint);
 }
