@@ -380,8 +380,8 @@ struct QuranRendererImpl {
         if (fontSize > 0) {
             // Use explicit font size with proportional line height
             char_height = fontSize;
-            // Line height is ~1.18x font size (15 lines fit in ~17.7x font height)
-            inter_line = static_cast<int>(fontSize * 1.18);
+            // Line height is slightly larger than font size to provide room for Arabic marks.
+            inter_line = static_cast<int>(fontSize * 1.22);
         } else {
             // Auto-fit: Calculate based on screen dimensions
             // Apply font scale factor (clamp to reasonable range)
@@ -393,7 +393,8 @@ struct QuranRendererImpl {
             // 1. Based on width (horizontal constraint)
             // 2. Based on height/line spacing (vertical constraint)
             int char_height_from_width = (width / 17) * 0.9;
-            int char_height_from_height = inter_line * 0.85; // Leave some spacing between lines
+            // Leave more spacing between lines to avoid collisions (marks above/below).
+            int char_height_from_height = inter_line * 0.82;
             
             // Use the smaller value to ensure text fits in both dimensions
             char_height = std::min(char_height_from_width, char_height_from_height);
