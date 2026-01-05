@@ -385,10 +385,14 @@ struct QuranRendererImpl {
         int x_padding = width / 42.5;
         
         if (fontSize > 0) {
-            // Use explicit font size with proportional line height
+            // Use explicit font size with proportional line height.
+            // Arabic text requires significant line height for vowel marks:
+            // - Marks above (fatha, damma, shadda, etc.) need ~40% of font height above
+            // - Marks below (kasra, etc.) need ~20% of font height below
+            // - Total line height should be approximately 1.8-2.0x font size for proper spacing
             char_height = fontSize;
-            // Line height is slightly larger than font size to provide room for Arabic marks.
-            inter_line = static_cast<int>(fontSize * 1.45);
+            // Use 1.8x multiplier to prevent overlaps between lines with marks
+            inter_line = static_cast<int>(fontSize * 1.8);
         } else {
             // Auto-fit: Calculate based on screen dimensions
             // Apply font scale factor (clamp to reasonable range)
@@ -408,9 +412,11 @@ struct QuranRendererImpl {
             char_height = char_height * clampedScale;
         }
         
-        // y_start should account for the character height since text renders upward from baseline
-        // Add char_height to ensure text doesn't get cut off at top
-        int y_start = char_height + (inter_line - char_height) * 0.5;
+        // y_start positions the first line's baseline.
+        // Arabic text needs room above the baseline for marks (fatha, damma, shadda, etc.)
+        // Following mushaf-android: baseline at ~72% down from line slot top
+        // This leaves ~28% of line height for marks above, ~72% for base + marks below
+        int y_start = static_cast<int>(inter_line * 0.72);
         
         double scale = (double)char_height / upem;
         int x_start = width - x_padding;
