@@ -186,30 +186,30 @@ struct QuranRendererImpl {
         float luminance = (0.299f * bg_r + 0.587f * bg_g + 0.114f * bg_b) / 255.0f;
         bool isDark = luminance < 0.5f;
         
-        // Gold color for ornaments, darker gold for dark backgrounds
-        SkColor ornamentColor = isDark ? SkColorSetRGB(218, 165, 32)  // DarkGoldenrod
-                                       : SkColorSetRGB(184, 134, 11); // GoldenBrown
-        SkColor frameColor = isDark ? SkColorSetRGB(139, 90, 43)      // Saddle brown (dark)
-                                    : SkColorSetRGB(101, 67, 33);     // Dark brown
+        // Brighter, more visible gold colors for ornaments
+        SkColor ornamentColor = isDark ? SkColorSetRGB(255, 215, 0)   // Bright Gold
+                                       : SkColorSetRGB(218, 165, 32); // Golden rod
+        SkColor frameColor = isDark ? SkColorSetRGB(218, 165, 32)     // Golden rod
+                                    : SkColorSetRGB(139, 90, 43);     // Saddle brown
         
         SkPaint framePaint;
         framePaint.setAntiAlias(true);
         framePaint.setStyle(SkPaint::kStroke_Style);
-        framePaint.setStrokeWidth(height * 0.03f);
+        framePaint.setStrokeWidth(height * 0.06f);  // Thicker stroke for visibility
         framePaint.setColor(frameColor);
         
         // Draw outer rectangle frame
         float frameMargin = width * 0.02f;
         SkRect outerRect = SkRect::MakeXYWH(x + frameMargin, y, width - 2 * frameMargin, height);
-        float cornerRadius = height * 0.15f;
+        float cornerRadius = height * 0.2f;
         canvas->drawRoundRect(outerRect, cornerRadius, cornerRadius, framePaint);
         
         // Draw inner rectangle frame
-        float innerMargin = width * 0.04f;
-        SkRect innerRect = SkRect::MakeXYWH(x + innerMargin, y + height * 0.1f, 
-                                            width - 2 * innerMargin, height * 0.8f);
-        framePaint.setStrokeWidth(height * 0.02f);
-        canvas->drawRoundRect(innerRect, cornerRadius * 0.8f, cornerRadius * 0.8f, framePaint);
+        float innerMargin = width * 0.05f;
+        SkRect innerRect = SkRect::MakeXYWH(x + innerMargin, y + height * 0.12f, 
+                                            width - 2 * innerMargin, height * 0.76f);
+        framePaint.setStrokeWidth(height * 0.04f);  // Thicker inner stroke
+        canvas->drawRoundRect(innerRect, cornerRadius * 0.7f, cornerRadius * 0.7f, framePaint);
         
         // Draw ornamental end caps (simplified arabesque)
         SkPaint ornamentPaint;
@@ -217,9 +217,9 @@ struct QuranRendererImpl {
         ornamentPaint.setStyle(SkPaint::kFill_Style);
         ornamentPaint.setColor(ornamentColor);
         
-        // Left ornament (stylized arabesque)
-        float ornamentSize = height * 0.4f;
-        float leftX = x + frameMargin - ornamentSize * 0.3f;
+        // Left ornament (stylized arabesque) - larger size
+        float ornamentSize = height * 0.6f;  // Increased from 0.4f
+        float leftX = x + frameMargin - ornamentSize * 0.2f;
         float centerY = y + height / 2;
         
         // Draw a simple diamond/rhombus shape as the ornament using SkPathBuilder
@@ -232,7 +232,7 @@ struct QuranRendererImpl {
         canvas->drawPath(leftBuilder.detach(), ornamentPaint);
         
         // Right ornament (mirror of left)
-        float rightX = x + width - frameMargin - ornamentSize * 0.7f;
+        float rightX = x + width - frameMargin - ornamentSize * 0.8f;
         SkPathBuilder rightBuilder;
         rightBuilder.moveTo(rightX + ornamentSize * 0.5f, centerY - ornamentSize * 0.5f);
         rightBuilder.lineTo(rightX + ornamentSize, centerY);
@@ -241,12 +241,12 @@ struct QuranRendererImpl {
         rightBuilder.close();
         canvas->drawPath(rightBuilder.detach(), ornamentPaint);
         
-        // Add small decorative circles at corners
+        // Add small decorative circles at corners - larger and thicker
         ornamentPaint.setStyle(SkPaint::kStroke_Style);
-        ornamentPaint.setStrokeWidth(height * 0.015f);
-        float circleRadius = height * 0.08f;
-        canvas->drawCircle(x + innerMargin + circleRadius * 1.5f, y + height * 0.5f, circleRadius, ornamentPaint);
-        canvas->drawCircle(x + width - innerMargin - circleRadius * 1.5f, y + height * 0.5f, circleRadius, ornamentPaint);
+        ornamentPaint.setStrokeWidth(height * 0.03f);  // Thicker
+        float circleRadius = height * 0.12f;  // Larger
+        canvas->drawCircle(x + innerMargin + circleRadius * 2.0f, y + height * 0.5f, circleRadius, ornamentPaint);
+        canvas->drawCircle(x + width - innerMargin - circleRadius * 2.0f, y + height * 0.5f, circleRadius, ornamentPaint);
     }
     
     void parseQuranText() {
@@ -476,11 +476,10 @@ struct QuranRendererImpl {
             // Apply font scale factor (clamp to reasonable range)
             float clampedScale = std::max(0.5f, std::min(2.0f, fontScale));
             
-            // mushaf-android uses these exact formulas:
-            // char_height = (dstInfo.width / 17) * 0.9
-            // inter_line = dstInfo.height / 15
+            // mushaf-android uses char_height = (dstInfo.width / 17) * 0.9
+            // We increase inter_line for better spacing with Arabic diacritics
             char_height = static_cast<int>((width / 17.0) * 0.9 * clampedScale);
-            inter_line = height / 15;
+            inter_line = height / 12;  // Increased from /15 for better spacing
         }
         
         // y_start positions the first line's baseline.
