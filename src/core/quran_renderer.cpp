@@ -313,7 +313,7 @@ struct QuranRendererImpl {
                 canvas->translate(-glyph_pos[i].x_advance, 0);
             }
             
-            canvas->translate(glyph_pos[i].x_offset, glyph_pos[i].y_offset);
+            canvas->translate(glyph_pos[i].x_offset, -glyph_pos[i].y_offset);
             
             // Tajweed color handling:
             // DigitalKhatt fonts can encode tajweed colors in two ways:
@@ -748,7 +748,7 @@ int quran_renderer_draw_text(
         }
         
         canvas->translate(-glyph_pos[i].x_advance, 0);
-        canvas->translate(glyph_pos[i].x_offset, glyph_pos[i].y_offset);
+        canvas->translate(glyph_pos[i].x_offset, -glyph_pos[i].y_offset);
         
         // Handle tajweed colors from base_codepoint (embedded by HarfBuzz during shaping)
         hb_color_t glyphColor = hbTextColor;

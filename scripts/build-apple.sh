@@ -573,6 +573,13 @@ main() {
         log_info "XCFramework contents:"
         ls -la "$OUTPUT_DIR/QuranRenderer.xcframework/"
     fi
+    
+    # Create release zip
+    local ZIP_PATH="${PROJECT_DIR}/build/quran-renderer-apple-release.zip"
+    log_info ""
+    log_info "Creating release zip..."
+    (cd "$OUTPUT_DIR" && rm -f "$ZIP_PATH" && zip -r "$ZIP_PATH" QuranRenderer.xcframework ios ios-simulator macos fonts)
+    log_success "Release zip: $ZIP_PATH"
 }
 
 main "$@"
