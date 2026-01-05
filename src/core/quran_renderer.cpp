@@ -281,8 +281,13 @@ struct QuranRendererImpl {
                 textWidth = textWidth * ratio;
             }
         } else if (textWidth < lineWidth) {
-            spaceWidth = (lineWidth - textWidth) / (double)nbSpaces;
-            applySpaceWidth = true;
+            // Only apply space-stretching if gap is significant (>3% of line width).
+            // When kashida justification is active, small gaps are acceptable.
+            double gap = lineWidth - currentLineWidth;
+            if (gap > lineWidth * 0.03 && nbSpaces > 0) {
+                spaceWidth = (lineWidth - textWidth) / (double)nbSpaces;
+                applySpaceWidth = true;
+            }
         }
         
         if (lineText.just_type == JustType::center) {

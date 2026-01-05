@@ -140,9 +140,9 @@ hb_skia_paint_color (hb_paint_funcs_t *pfuncs HB_UNUSED,
     skia_context_t *c = (skia_context_t *) paint_data;
     
     // HarfBuzz paint semantics:
-    // - If use_foreground is true, the paint should use the current foreground color passed
-    //   to hb_font_paint_glyph (we store that in c->foreground).
-    // - Otherwise use the explicit color provided by COLR / palette.
+    // - If use_foreground is true, paint should use the foreground color 
+    //   (which carries our tajweed color for this glyph).
+    // - Otherwise use the explicit COLR palette color (which may also be tajweed).
     hb_color_t final_color = use_foreground ? c->foreground : color;
     
     c->paint->setColor(SkColorSetARGB(
