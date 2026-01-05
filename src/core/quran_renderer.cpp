@@ -397,22 +397,15 @@ struct QuranRendererImpl {
             // Use 1.8x multiplier to prevent overlaps between lines with marks
             inter_line = static_cast<int>(fontSize * 1.8);
         } else {
-            // Auto-fit: Calculate based on screen dimensions
+            // Auto-fit: Match mushaf-android exactly
             // Apply font scale factor (clamp to reasonable range)
             float clampedScale = std::max(0.5f, std::min(2.0f, fontScale));
             
+            // mushaf-android uses these exact formulas:
+            // char_height = (dstInfo.width / 17) * 0.9
+            // inter_line = dstInfo.height / 15
+            char_height = static_cast<int>((width / 17.0) * 0.9 * clampedScale);
             inter_line = height / 15;
-            
-            // Calculate char_height from the smaller of the two constraints:
-            // 1. Based on width (horizontal constraint)
-            // 2. Based on height/line spacing (vertical constraint)
-            int char_height_from_width = (width / 17) * 0.9;
-            // Leave more spacing between lines to avoid collisions (marks above/below).
-            int char_height_from_height = inter_line * 0.70;
-            
-            // Use the smaller value to ensure text fits in both dimensions
-            char_height = std::min(char_height_from_width, char_height_from_height);
-            char_height = char_height * clampedScale;
         }
         
         // y_start positions the first line's baseline.

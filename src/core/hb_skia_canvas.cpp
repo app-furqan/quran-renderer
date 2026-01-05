@@ -139,18 +139,16 @@ hb_skia_paint_color (hb_paint_funcs_t *pfuncs HB_UNUSED,
 {
     skia_context_t *c = (skia_context_t *) paint_data;
     
-    // For use_foreground layers (like ayah number digits), use context.foreground
-    // which is updated per-glyph before hb_font_paint_glyph is called.
-    // For other layers, use the passed color (embedded COLR colors).
-    // This allows tajweed colors to work (we set context.foreground = tajweed_color)
-    // AND ayah numbers to adopt text color in dark mode.
-    hb_color_t effectiveColor = use_foreground ? c->foreground : color;
-    
+    // Match mushaf-android behavior: always use the passed color directly.
+    // This means:
+    // - Tajweed colors work because we pass the tajweed color to hb_font_paint_glyph
+    // - Ayah number text stays BLACK (its embedded COLR color) even on dark backgrounds
+    // The ayah number frame/decoration adopts the text color, but the digits stay black.
     c->paint->setColor(SkColorSetARGB(
-        hb_color_get_alpha(effectiveColor), 
-        hb_color_get_red(effectiveColor), 
-        hb_color_get_green(effectiveColor), 
-        hb_color_get_blue(effectiveColor)
+        hb_color_get_alpha(color), 
+        hb_color_get_red(color), 
+        hb_color_get_green(color), 
+        hb_color_get_blue(color)
     ));
     c->canvas->drawPath(c->path, *c->paint);
 }
