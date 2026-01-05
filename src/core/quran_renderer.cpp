@@ -341,6 +341,9 @@ struct QuranRendererImpl {
                     255
                 );
             }
+            // Update context foreground before painting so COLR use_foreground layers
+            // can access it. This is important for ayah number glyphs in dark mode.
+            context->foreground = color;
             hb_font_paint_glyph(font, glyph_index, paint_funcs, context, 0, color);
             
             // Reverse the offset translation (negate both x and y)
