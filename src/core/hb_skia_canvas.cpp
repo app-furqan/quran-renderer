@@ -139,9 +139,24 @@ hb_skia_paint_color (hb_paint_funcs_t *pfuncs HB_UNUSED,
 {
     skia_context_t *c = (skia_context_t *) paint_data;
     
-    // use_foreground: if true and c->use_foreground_override is set, use c->foreground
-    // otherwise use the color from COLR/passed in
-    hb_color_t final_color = (use_foreground && c->use_foreground_override) ? c->foreground : color;
+    // HarfBuzz paint semantics:
+    // - If use_foreground is true, the paint should use the current foreground color passed
+    //   to hb_font_paint_glyph (we store that in c->foreground).
+    // - Otherwise use the explicit color provided by COLR / palette.
+    hb_color_t final_color = use_foreground ? c->foreground : color;
+
+    // Some fonts provide black as an explicit COLR layer color. On dark backgrounds,
+    // this can leave unintended black glyph parts. If the current foreground is not
+    // black (e.g., computed as white), treat explicit black as foreground.
+    if (!use_foreground &&
+        hb_color_get_red(color) == 0 &&
+        hb_color_get_green(color) == 0 &&
+        hb_color_get_blue(color) == 0 &&
+        (hb_color_get_red(c->foreground) != 0 ||
+         hb_color_get_green(c->foreground) != 0 ||
+         hb_color_get_blue(c->foreground) != 0)) {
+        final_color = c->foreground;
+    }
     
     c->paint->setColor(SkColorSetARGB(
         hb_color_get_alpha(final_color), 
@@ -198,6 +213,11 @@ void hb_skia_paint_glyph (hb_font_t *font,
                           unsigned int palette_index,
                           hb_color_t foreground)
 {
+    // Keep HarfBuzz foreground color in sync per glyph.
+    // This is required to preserve tajweed colors when the font paints using
+    // use_foreground layers.
+    skia_context_t *c = (skia_context_t *) paint_data;
+    c->foreground = foreground;
     hb_font_paint_glyph (font, glyph, hb_skia_paint_get_funcs(), paint_data, palette_index, foreground);
 }
 

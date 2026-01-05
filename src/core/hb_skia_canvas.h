@@ -15,7 +15,7 @@ typedef struct
     SkPath path;
     SkPaint * paint;
     hb_color_t foreground;          // Foreground color for text
-    bool use_foreground_override;   // If true, use foreground when use_foreground=true in callback
+    bool use_foreground_override;   // If true, keep foreground fixed (do not update per glyph)
 } skia_context_t;
 
 void hb_skia_paint_glyph (hb_font_t *font,

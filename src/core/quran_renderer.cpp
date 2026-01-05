@@ -271,6 +271,7 @@ struct QuranRendererImpl {
         
         bool applySpaceWidth = false;
         bool changeSize = true;
+        const bool hbJustifyEnabled = (justify && lineText.just_type == JustType::just);
         
         if (currentLineWidth > lineWidth) {
             if (changeSize) {
@@ -280,7 +281,7 @@ struct QuranRendererImpl {
                 currentLineWidth = lineWidth;
                 textWidth = textWidth * ratio;
             }
-        } else if (textWidth < lineWidth) {
+        } else if (!hbJustifyEnabled && textWidth < lineWidth) {
             spaceWidth = (lineWidth - textWidth) / (double)nbSpaces;
             applySpaceWidth = true;
         }
@@ -381,7 +382,7 @@ struct QuranRendererImpl {
             // Use explicit font size with proportional line height
             char_height = fontSize;
             // Line height is slightly larger than font size to provide room for Arabic marks.
-            inter_line = static_cast<int>(fontSize * 1.22);
+            inter_line = static_cast<int>(fontSize * 1.28);
         } else {
             // Auto-fit: Calculate based on screen dimensions
             // Apply font scale factor (clamp to reasonable range)
@@ -394,7 +395,7 @@ struct QuranRendererImpl {
             // 2. Based on height/line spacing (vertical constraint)
             int char_height_from_width = (width / 17) * 0.9;
             // Leave more spacing between lines to avoid collisions (marks above/below).
-            int char_height_from_height = inter_line * 0.82;
+            int char_height_from_height = inter_line * 0.80;
             
             // Use the smaller value to ensure text fits in both dimensions
             char_height = std::min(char_height_from_width, char_height_from_height);

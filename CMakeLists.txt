@@ -11,6 +11,7 @@ endif()
 
 option(BUILD_SHARED_LIBS "Build shared library" ON)
 option(BUILD_ANDROID "Build for Android" OFF)
+option(QURAN_RENDERER_BUILD_RENDER_TEST "Build dark-mode render smoke test" ON)
 
 # Quran text data path (required)
 set(QURAN_TEXT_DIR "/home/ali/Desktop/Projects/mushaf-android/libs/visualmetafont/src/qurantext" CACHE PATH "Path to qurantext source directory")
@@ -117,6 +118,11 @@ set_target_properties(quran_renderer PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION 1
 )
+
+if(QURAN_RENDERER_BUILD_RENDER_TEST)
+    add_executable(render_dark_tajweed_test tools/render_dark_tajweed_test.cpp)
+    target_link_libraries(render_dark_tajweed_test PRIVATE quran_renderer)
+endif()
 
 # Export header
 target_compile_definitions(quran_renderer PRIVATE QURAN_RENDERER_EXPORTS)
