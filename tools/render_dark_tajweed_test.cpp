@@ -134,7 +134,6 @@ int main(int argc, char** argv) {
         cfg.backgroundColor = bg;
         cfg.fontSize = 0;
         cfg.useForeground = false;
-        cfg.showSurahFrame = true;
 
         quran_renderer_draw_page(renderer, &buffer, pageIndex, &cfg);
 

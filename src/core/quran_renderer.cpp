@@ -176,79 +176,6 @@ struct QuranRendererImpl {
         return true;
     }
     
-    // Draw a decorative frame around surah name headers
-    // Inspired by DigitalKhatt's ayaframe.svg design
-    void drawSurahFrame(SkCanvas* canvas, float x, float y, float width, float height, uint32_t backgroundColor) {
-        // Determine frame colors based on background luminance
-        uint8_t bg_r = (backgroundColor >> 24) & 0xFF;
-        uint8_t bg_g = (backgroundColor >> 16) & 0xFF;
-        uint8_t bg_b = (backgroundColor >> 8) & 0xFF;
-        float luminance = (0.299f * bg_r + 0.587f * bg_g + 0.114f * bg_b) / 255.0f;
-        bool isDark = luminance < 0.5f;
-        
-        // Brighter, more visible gold colors for ornaments
-        SkColor ornamentColor = isDark ? SkColorSetRGB(255, 215, 0)   // Bright Gold
-                                       : SkColorSetRGB(218, 165, 32); // Golden rod
-        SkColor frameColor = isDark ? SkColorSetRGB(218, 165, 32)     // Golden rod
-                                    : SkColorSetRGB(139, 90, 43);     // Saddle brown
-        
-        SkPaint framePaint;
-        framePaint.setAntiAlias(true);
-        framePaint.setStyle(SkPaint::kStroke_Style);
-        framePaint.setStrokeWidth(height * 0.06f);  // Thicker stroke for visibility
-        framePaint.setColor(frameColor);
-        
-        // Draw outer rectangle frame
-        float frameMargin = width * 0.02f;
-        SkRect outerRect = SkRect::MakeXYWH(x + frameMargin, y, width - 2 * frameMargin, height);
-        float cornerRadius = height * 0.2f;
-        canvas->drawRoundRect(outerRect, cornerRadius, cornerRadius, framePaint);
-        
-        // Draw inner rectangle frame
-        float innerMargin = width * 0.05f;
-        SkRect innerRect = SkRect::MakeXYWH(x + innerMargin, y + height * 0.12f, 
-                                            width - 2 * innerMargin, height * 0.76f);
-        framePaint.setStrokeWidth(height * 0.04f);  // Thicker inner stroke
-        canvas->drawRoundRect(innerRect, cornerRadius * 0.7f, cornerRadius * 0.7f, framePaint);
-        
-        // Draw ornamental end caps (simplified arabesque)
-        SkPaint ornamentPaint;
-        ornamentPaint.setAntiAlias(true);
-        ornamentPaint.setStyle(SkPaint::kFill_Style);
-        ornamentPaint.setColor(ornamentColor);
-        
-        // Left ornament (stylized arabesque) - larger size
-        float ornamentSize = height * 0.6f;  // Increased from 0.4f
-        float leftX = x + frameMargin - ornamentSize * 0.2f;
-        float centerY = y + height / 2;
-        
-        // Draw a simple diamond/rhombus shape as the ornament using SkPathBuilder
-        SkPathBuilder leftBuilder;
-        leftBuilder.moveTo(leftX + ornamentSize * 0.5f, centerY - ornamentSize * 0.5f);
-        leftBuilder.lineTo(leftX + ornamentSize, centerY);
-        leftBuilder.lineTo(leftX + ornamentSize * 0.5f, centerY + ornamentSize * 0.5f);
-        leftBuilder.lineTo(leftX, centerY);
-        leftBuilder.close();
-        canvas->drawPath(leftBuilder.detach(), ornamentPaint);
-        
-        // Right ornament (mirror of left)
-        float rightX = x + width - frameMargin - ornamentSize * 0.8f;
-        SkPathBuilder rightBuilder;
-        rightBuilder.moveTo(rightX + ornamentSize * 0.5f, centerY - ornamentSize * 0.5f);
-        rightBuilder.lineTo(rightX + ornamentSize, centerY);
-        rightBuilder.lineTo(rightX + ornamentSize * 0.5f, centerY + ornamentSize * 0.5f);
-        rightBuilder.lineTo(rightX, centerY);
-        rightBuilder.close();
-        canvas->drawPath(rightBuilder.detach(), ornamentPaint);
-        
-        // Add small decorative circles at corners - larger and thicker
-        ornamentPaint.setStyle(SkPaint::kStroke_Style);
-        ornamentPaint.setStrokeWidth(height * 0.03f);  // Thicker
-        float circleRadius = height * 0.12f;  // Larger
-        canvas->drawCircle(x + innerMargin + circleRadius * 2.0f, y + height * 0.5f, circleRadius, ornamentPaint);
-        canvas->drawCircle(x + width - innerMargin - circleRadius * 2.0f, y + height * 0.5f, circleRadius, ornamentPaint);
-    }
-    
     void parseQuranText() {
         const char* bism1 = "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ";
         const char* bism2 = "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ";
@@ -433,7 +360,7 @@ struct QuranRendererImpl {
         hb_buffer_destroy(buffer);
     }
     
-    void drawPage(void* pixels, int width, int height, int stride, int pageIndex, bool justify, float fontScale = 1.0f, uint32_t backgroundColor = 0xFFFFFFFF, int fontSize = 0, bool useForeground = false, bool showSurahFrame = true) {
+    void drawPage(void* pixels, int width, int height, int stride, int pageIndex, bool justify, float fontScale = 1.0f, uint32_t backgroundColor = 0xFFFFFFFF, int fontSize = 0, bool useForeground = false) {
         SkImageInfo imageInfo = SkImageInfo::Make(width, height, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
         auto canvas = SkCanvas::MakeRasterDirect(imageInfo, pixels, stride);
         
@@ -477,9 +404,9 @@ struct QuranRendererImpl {
             float clampedScale = std::max(0.5f, std::min(2.0f, fontScale));
             
             // mushaf-android uses char_height = (dstInfo.width / 17) * 0.9
-            // We increase inter_line for better spacing with Arabic diacritics
+            // We use height/10 for significantly more line spacing with Arabic diacritics
             char_height = static_cast<int>((width / 17.0) * 0.9 * clampedScale);
-            inter_line = height / 12;  // Increased from /15 for better spacing
+            inter_line = height / 10;  // Increased from /12 for much better spacing
         }
         
         // y_start positions the first line's baseline.
@@ -543,27 +470,6 @@ struct QuranRendererImpl {
             
             auto& linetext = pageText[lineIndex];
             
-            // Draw decorative frame for surah name lines
-            if (showSurahFrame && linetext.line_type == LineType::Sura) {
-                canvas->save();
-                canvas->resetMatrix();
-                // Position frame centered on the line
-                float frameWidth = width - 2 * x_padding;
-                float frameHeight = inter_line * 0.9f;
-                float frameX = x_padding;
-                float frameY = y_start + lineIndex * inter_line - frameHeight * 0.55f;
-                drawSurahFrame(canvas.get(), frameX, frameY, frameWidth, frameHeight, backgroundColor);
-                canvas->restore();
-                // Reset translation for text drawing
-                canvas->resetMatrix();
-                if (specialWidth != lineWidths.end()) {
-                    float xxstart = (pageWidth - lineWidth) / 2;
-                    canvas->translate(x_start - xxstart * renderScale, y_start + lineIndex * inter_line);
-                } else {
-                    canvas->translate(x_start, y_start + lineIndex * inter_line);
-                }
-            }
-            
             canvas->scale(renderScale, -renderScale);
             
             // Disable tajweed coloring for surah name lines - they should be plain text
@@ -619,8 +525,7 @@ void quran_renderer_draw_page(
         config ? config->fontScale : 1.0f,
         config ? config->backgroundColor : 0xFFFFFFFF,
         config ? config->fontSize : 0,
-        config ? config->useForeground : false,
-        config ? config->showSurahFrame : true
+        config ? config->useForeground : false
     );
 }
 

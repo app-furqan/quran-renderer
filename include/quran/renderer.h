@@ -52,7 +52,6 @@ typedef struct {
     uint32_t backgroundColor; // Background color in RGBA format (0xRRGGBBAA, default: 0xFFFFFFFF for white)
     int fontSize;       // Font size in pixels (0 = auto, calculated as (width/17)*0.9 to match mushaf-android)
     bool useForeground; // If true, use foreground color when COLR requests use_foreground
-    bool showSurahFrame; // If true, draw decorative frame around surah name headers
 } QuranRenderConfig;
 
 /**
