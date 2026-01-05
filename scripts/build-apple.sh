@@ -648,11 +648,25 @@ main() {
         ls -la "$OUTPUT_DIR/QuranRenderer.xcframework/"
     fi
     
-    # Create release zip (now includes macos-dylib)
-    local ZIP_PATH="${PROJECT_DIR}/build/quran-renderer-apple-release.zip"
+    # Create release zip (now includes macos-dylib and android if available)
+    local ZIP_PATH="${PROJECT_DIR}/build/quran-renderer-release.zip"
     log_info ""
     log_info "Creating release zip..."
-    (cd "$OUTPUT_DIR" && rm -f "$ZIP_PATH" && zip -r "$ZIP_PATH" QuranRenderer.xcframework ios ios-simulator macos macos-dylib fonts)
+    cd "$OUTPUT_DIR"
+    rm -f "$ZIP_PATH"
+    
+    # Start with Apple artifacts
+    local ZIP_CONTENTS="QuranRenderer.xcframework ios ios-simulator macos macos-dylib fonts"
+    
+    # Add Android libs if they exist
+    if [[ -d "${PROJECT_DIR}/build/android" ]]; then
+        log_info "Including Android libraries in release..."
+        mkdir -p "$OUTPUT_DIR/android"
+        cp -r "${PROJECT_DIR}/build/android/"* "$OUTPUT_DIR/android/"
+        ZIP_CONTENTS="$ZIP_CONTENTS android"
+    fi
+    
+    zip -r "$ZIP_PATH" $ZIP_CONTENTS
     log_success "Release zip: $ZIP_PATH"
 }
 

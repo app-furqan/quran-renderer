@@ -335,8 +335,14 @@ build_quran_renderer() {
     # Copy output
     cp libquranrenderer.so "$OUTPUT_DIR/"
     
-    # Strip debug symbols for smaller size
-    "$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" "$OUTPUT_DIR/libquranrenderer.so"
+    # Strip debug symbols for smaller size (detect macOS vs Linux)
+    local STRIP_TOOL
+    if [[ "$(uname)" == "Darwin" ]]; then
+        STRIP_TOOL="$NDK_PATH/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-strip"
+    else
+        STRIP_TOOL="$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+    fi
+    "$STRIP_TOOL" "$OUTPUT_DIR/libquranrenderer.so"
     
     local SIZE=$(du -h "$OUTPUT_DIR/libquranrenderer.so" | cut -f1)
     log_success "Built: $OUTPUT_DIR/libquranrenderer.so ($SIZE)"
