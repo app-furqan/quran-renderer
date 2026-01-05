@@ -144,19 +144,6 @@ hb_skia_paint_color (hb_paint_funcs_t *pfuncs HB_UNUSED,
     //   to hb_font_paint_glyph (we store that in c->foreground).
     // - Otherwise use the explicit color provided by COLR / palette.
     hb_color_t final_color = use_foreground ? c->foreground : color;
-
-    // Some fonts provide black as an explicit COLR layer color. On dark backgrounds,
-    // this can leave unintended black glyph parts. If the current foreground is not
-    // black (e.g., computed as white), treat explicit black as foreground.
-    if (!use_foreground &&
-        hb_color_get_red(color) == 0 &&
-        hb_color_get_green(color) == 0 &&
-        hb_color_get_blue(color) == 0 &&
-        (hb_color_get_red(c->foreground) != 0 ||
-         hb_color_get_green(c->foreground) != 0 ||
-         hb_color_get_blue(c->foreground) != 0)) {
-        final_color = c->foreground;
-    }
     
     c->paint->setColor(SkColorSetARGB(
         hb_color_get_alpha(final_color), 
