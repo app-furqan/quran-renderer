@@ -134,6 +134,8 @@ int main(int argc, char** argv) {
         cfg.backgroundColor = bg;
         cfg.fontSize = 0;
         cfg.useForeground = false;
+        cfg.lineHeightDivisor = 0.0f;  // Auto: 10.0 for regular pages, 7.5 for Fatiha
+        cfg.topMarginLines = -1.0f;    // Auto: no extra top margin
 
         quran_renderer_draw_page(renderer, &buffer, pageIndex, &cfg);
 

@@ -176,6 +176,86 @@ struct QuranRendererImpl {
         return true;
     }
     
+    // Draw a decorative surah name frame
+    // Based on ayaframe.svg from DigitalKhatt
+    void drawSurahFrame(SkCanvas* canvas, float x, float y, float width, float height, uint32_t backgroundColor) {
+        // Determine if dark mode based on background luminance
+        uint8_t bg_r = (backgroundColor >> 24) & 0xFF;
+        uint8_t bg_g = (backgroundColor >> 16) & 0xFF;
+        uint8_t bg_b = (backgroundColor >> 8) & 0xFF;
+        float luminance = (0.299f * bg_r + 0.587f * bg_g + 0.114f * bg_b) / 255.0f;
+        bool isDarkMode = luminance < 0.5f;
+        
+        // Frame colors - teal/blue theme matching the original SVG
+        SkColor frameColor = isDarkMode ? SkColorSetRGB(0x43, 0xB4, 0xE5) : SkColorSetRGB(0x12, 0x61, 0x83);
+        SkColor fillColor = isDarkMode ? SkColorSetARGB(40, 0x43, 0xB4, 0xE5) : SkColorSetRGB(0x1C, 0x78, 0x97);
+        SkColor accentColor = isDarkMode ? SkColorSetRGB(0x6E, 0xC5, 0xEB) : SkColorSetRGB(0x43, 0xB4, 0xE5);
+        
+        SkPaint framePaint;
+        framePaint.setAntiAlias(true);
+        framePaint.setStyle(SkPaint::kStroke_Style);
+        framePaint.setStrokeWidth(height * 0.04f);
+        framePaint.setColor(frameColor);
+        
+        SkPaint fillPaint;
+        fillPaint.setAntiAlias(true);
+        fillPaint.setStyle(SkPaint::kFill_Style);
+        fillPaint.setColor(fillColor);
+        
+        // Main frame rectangle with rounded ends
+        float cornerRadius = height * 0.4f;
+        SkRect frameRect = SkRect::MakeXYWH(x, y, width, height);
+        
+        // Draw filled background
+        canvas->drawRoundRect(frameRect, cornerRadius, cornerRadius, fillPaint);
+        
+        // Draw frame border
+        canvas->drawRoundRect(frameRect, cornerRadius, cornerRadius, framePaint);
+        
+        // Draw decorative elements at the ends
+        float decorSize = height * 0.35f;
+        
+        // Left end decoration (circular ornament)
+        SkPaint decorPaint;
+        decorPaint.setAntiAlias(true);
+        decorPaint.setStyle(SkPaint::kFill_Style);
+        decorPaint.setColor(accentColor);
+        
+        // Left circle
+        canvas->drawCircle(x + height * 0.5f, y + height * 0.5f, decorSize * 0.4f, decorPaint);
+        
+        // Right circle
+        canvas->drawCircle(x + width - height * 0.5f, y + height * 0.5f, decorSize * 0.4f, decorPaint);
+        
+        // Inner white/light circles
+        SkPaint innerPaint;
+        innerPaint.setAntiAlias(true);
+        innerPaint.setStyle(SkPaint::kFill_Style);
+        innerPaint.setColor(isDarkMode ? SkColorSetRGB(0x20, 0x20, 0x20) : SK_ColorWHITE);
+        
+        canvas->drawCircle(x + height * 0.5f, y + height * 0.5f, decorSize * 0.25f, innerPaint);
+        canvas->drawCircle(x + width - height * 0.5f, y + height * 0.5f, decorSize * 0.25f, innerPaint);
+        
+        // Draw small diamond shapes near the circles
+        float diamondSize = height * 0.12f;
+        
+        auto drawDiamond = [&](float cx, float cy) {
+            SkPathBuilder builder;
+            builder.moveTo(cx, cy - diamondSize);
+            builder.lineTo(cx + diamondSize * 0.7f, cy);
+            builder.lineTo(cx, cy + diamondSize);
+            builder.lineTo(cx - diamondSize * 0.7f, cy);
+            builder.close();
+            canvas->drawPath(builder.detach(), decorPaint);
+        };
+        
+        // Diamonds next to left circle
+        drawDiamond(x + height * 0.9f, y + height * 0.5f);
+        
+        // Diamonds next to right circle  
+        drawDiamond(x + width - height * 0.9f, y + height * 0.5f);
+    }
+    
     void parseQuranText() {
         const char* bism1 = "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ";
         const char* bism2 = "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ";
@@ -360,7 +440,7 @@ struct QuranRendererImpl {
         hb_buffer_destroy(buffer);
     }
     
-    void drawPage(void* pixels, int width, int height, int stride, int pageIndex, bool justify, float fontScale = 1.0f, uint32_t backgroundColor = 0xFFFFFFFF, int fontSize = 0, bool useForeground = false) {
+    void drawPage(void* pixels, int width, int height, int stride, int pageIndex, bool justify, float fontScale = 1.0f, uint32_t backgroundColor = 0xFFFFFFFF, int fontSize = 0, bool useForeground = false, float lineHeightDivisor = 0.0f, float topMarginLines = -1.0f) {
         SkImageInfo imageInfo = SkImageInfo::Make(width, height, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
         auto canvas = SkCanvas::MakeRasterDirect(imageInfo, pixels, stride);
         
@@ -384,10 +464,20 @@ struct QuranRendererImpl {
         
         auto& pageText = pages[pageIndex];
         
+        // Determine if this is a Fatiha page (special layout)
+        bool isFatihaPage = (pageIndex == 0 || pageIndex == 1);
+        
         // Font size and line height calculation
         int char_height;
         int inter_line;
         int x_padding = width / 42.5;
+        
+        // Line height divisor: user-specified or auto
+        // Auto: 10.0 for regular pages, 7.5 for Fatiha pages (fewer lines, more spacing)
+        float effectiveLineHeightDivisor = lineHeightDivisor;
+        if (effectiveLineHeightDivisor <= 0.0f) {
+            effectiveLineHeightDivisor = isFatihaPage ? 7.5f : 10.0f;
+        }
         
         if (fontSize > 0) {
             // Use explicit font size with proportional line height.
@@ -404,9 +494,8 @@ struct QuranRendererImpl {
             float clampedScale = std::max(0.5f, std::min(2.0f, fontScale));
             
             // mushaf-android uses char_height = (dstInfo.width / 17) * 0.9
-            // We use height/10 for significantly more line spacing with Arabic diacritics
             char_height = static_cast<int>((width / 17.0) * 0.9 * clampedScale);
-            inter_line = height / 10;  // Increased from /12 for much better spacing
+            inter_line = static_cast<int>(height / effectiveLineHeightDivisor);
         }
         
         // y_start positions the first line's baseline.
@@ -436,8 +525,17 @@ struct QuranRendererImpl {
         // Calculate the rendering scale adjustment to map reference coordinates to actual screen
         double renderScale = scale * pageWidthRatio;
         
-        if (pageIndex == 0 || pageIndex == 1) {
-            y_start = y_start + 3.5 * inter_line;
+        // Top margin: user-specified or auto
+        // Auto: 0 for regular pages (start at top), 0 for Fatiha too (removed old 3.5 offset)
+        // User can set topMarginLines to add spacing at top if desired
+        float effectiveTopMargin = topMarginLines;
+        if (effectiveTopMargin < 0.0f) {
+            // Auto mode: no extra top margin - start from the top of the page
+            effectiveTopMargin = 0.0f;
+        }
+        
+        if (effectiveTopMargin > 0.0f) {
+            y_start = y_start + static_cast<int>(effectiveTopMargin * inter_line);
         }
         
         // Compute text color based on background luminance
@@ -469,6 +567,22 @@ struct QuranRendererImpl {
             }
             
             auto& linetext = pageText[lineIndex];
+            
+            // Draw surah name frame for Sura lines
+            if (linetext.line_type == LineType::Sura) {
+                canvas->resetMatrix();
+                // Frame dimensions - spans most of the page width
+                float frameWidth = (width - 2 * x_padding) * 0.85f;
+                float frameHeight = inter_line * 0.7f;
+                float frameX = x_padding + (width - 2 * x_padding - frameWidth) / 2;
+                float frameY = y_start + lineIndex * inter_line - inter_line * 0.55f;
+                
+                drawSurahFrame(canvas.get(), frameX, frameY, frameWidth, frameHeight, backgroundColor);
+                
+                // Reset canvas for text drawing
+                canvas->resetMatrix();
+                canvas->translate(x_start, y_start + lineIndex * inter_line);
+            }
             
             canvas->scale(renderScale, -renderScale);
             
@@ -525,7 +639,9 @@ void quran_renderer_draw_page(
         config ? config->fontScale : 1.0f,
         config ? config->backgroundColor : 0xFFFFFFFF,
         config ? config->fontSize : 0,
-        config ? config->useForeground : false
+        config ? config->useForeground : false,
+        config ? config->lineHeightDivisor : 0.0f,
+        config ? config->topMarginLines : -1.0f
     );
 }
 
