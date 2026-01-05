@@ -281,10 +281,10 @@ struct QuranRendererImpl {
                 textWidth = textWidth * ratio;
             }
         } else if (textWidth < lineWidth) {
-            // Only apply space-stretching if gap is significant (>3% of line width).
+            // Only apply space-stretching if gap is significant (>1% of line width).
             // When kashida justification is active, small gaps are acceptable.
             double gap = lineWidth - currentLineWidth;
-            if (gap > lineWidth * 0.03 && nbSpaces > 0) {
+            if (gap > lineWidth * 0.01 && nbSpaces > 0) {
                 spaceWidth = (lineWidth - textWidth) / (double)nbSpaces;
                 applySpaceWidth = true;
             }
@@ -340,6 +340,9 @@ struct QuranRendererImpl {
                     color = HB_COLOR(r, g, b, 255);
                 }
             }
+            // CRITICAL: Set foreground before painting. When HarfBuzz calls the paint callback
+            // with use_foreground=true, it uses context->foreground instead of the passed color.
+            context->foreground = color;
             hb_font_paint_glyph(font, glyph_index, paint_funcs, context, 0, color);
             
             canvas->translate(-glyph_pos[i].x_offset, -glyph_pos[i].y_offset);
@@ -386,7 +389,7 @@ struct QuranRendererImpl {
             // Use explicit font size with proportional line height
             char_height = fontSize;
             // Line height is slightly larger than font size to provide room for Arabic marks.
-            inter_line = static_cast<int>(fontSize * 1.35);
+            inter_line = static_cast<int>(fontSize * 1.45);
         } else {
             // Auto-fit: Calculate based on screen dimensions
             // Apply font scale factor (clamp to reasonable range)
@@ -399,7 +402,7 @@ struct QuranRendererImpl {
             // 2. Based on height/line spacing (vertical constraint)
             int char_height_from_width = (width / 17) * 0.9;
             // Leave more spacing between lines to avoid collisions (marks above/below).
-            int char_height_from_height = inter_line * 0.75;
+            int char_height_from_height = inter_line * 0.70;
             
             // Use the smaller value to ensure text fits in both dimensions
             char_height = std::min(char_height_from_width, char_height_from_height);
@@ -758,6 +761,9 @@ int quran_renderer_draw_text(
             }
         }
         
+        // CRITICAL: Set foreground before painting. When HarfBuzz calls the paint callback
+        // with use_foreground=true, it uses context.foreground instead of the passed color.
+        context.foreground = glyphColor;
         hb_font_paint_glyph(renderer->font, glyph_index, renderer->paint_funcs, &context, 0, glyphColor);
         
         canvas->translate(-glyph_pos[i].x_offset, -glyph_pos[i].y_offset);
