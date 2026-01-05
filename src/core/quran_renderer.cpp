@@ -414,6 +414,17 @@ struct QuranRendererImpl {
         
         // Compute text color based on background luminance
         hb_color_t textColor = getTextColorForBackground(backgroundColor);
+
+        // Ensure foreground color follows the computed text color.
+        // This matters when COLR/painted glyphs request "use_foreground"; in that case
+        // hb_skia_paint_color may use context.foreground (when override is enabled).
+        context.foreground = textColor;
+        paint.setColor(SkColorSetARGB(
+            hb_color_get_alpha(textColor),
+            hb_color_get_red(textColor),
+            hb_color_get_green(textColor),
+            hb_color_get_blue(textColor)
+        ));
         
         for (size_t lineIndex = 0; lineIndex < pageText.size(); lineIndex++) {
             canvas->resetMatrix();
