@@ -176,6 +176,79 @@ struct QuranRendererImpl {
         return true;
     }
     
+    // Draw a decorative frame around surah name headers
+    // Inspired by DigitalKhatt's ayaframe.svg design
+    void drawSurahFrame(SkCanvas* canvas, float x, float y, float width, float height, uint32_t backgroundColor) {
+        // Determine frame colors based on background luminance
+        uint8_t bg_r = (backgroundColor >> 24) & 0xFF;
+        uint8_t bg_g = (backgroundColor >> 16) & 0xFF;
+        uint8_t bg_b = (backgroundColor >> 8) & 0xFF;
+        float luminance = (0.299f * bg_r + 0.587f * bg_g + 0.114f * bg_b) / 255.0f;
+        bool isDark = luminance < 0.5f;
+        
+        // Gold color for ornaments, darker gold for dark backgrounds
+        SkColor ornamentColor = isDark ? SkColorSetRGB(218, 165, 32)  // DarkGoldenrod
+                                       : SkColorSetRGB(184, 134, 11); // GoldenBrown
+        SkColor frameColor = isDark ? SkColorSetRGB(139, 90, 43)      // Saddle brown (dark)
+                                    : SkColorSetRGB(101, 67, 33);     // Dark brown
+        
+        SkPaint framePaint;
+        framePaint.setAntiAlias(true);
+        framePaint.setStyle(SkPaint::kStroke_Style);
+        framePaint.setStrokeWidth(height * 0.03f);
+        framePaint.setColor(frameColor);
+        
+        // Draw outer rectangle frame
+        float frameMargin = width * 0.02f;
+        SkRect outerRect = SkRect::MakeXYWH(x + frameMargin, y, width - 2 * frameMargin, height);
+        float cornerRadius = height * 0.15f;
+        canvas->drawRoundRect(outerRect, cornerRadius, cornerRadius, framePaint);
+        
+        // Draw inner rectangle frame
+        float innerMargin = width * 0.04f;
+        SkRect innerRect = SkRect::MakeXYWH(x + innerMargin, y + height * 0.1f, 
+                                            width - 2 * innerMargin, height * 0.8f);
+        framePaint.setStrokeWidth(height * 0.02f);
+        canvas->drawRoundRect(innerRect, cornerRadius * 0.8f, cornerRadius * 0.8f, framePaint);
+        
+        // Draw ornamental end caps (simplified arabesque)
+        SkPaint ornamentPaint;
+        ornamentPaint.setAntiAlias(true);
+        ornamentPaint.setStyle(SkPaint::kFill_Style);
+        ornamentPaint.setColor(ornamentColor);
+        
+        // Left ornament (stylized arabesque)
+        float ornamentSize = height * 0.4f;
+        float leftX = x + frameMargin - ornamentSize * 0.3f;
+        float centerY = y + height / 2;
+        
+        // Draw a simple diamond/rhombus shape as the ornament using SkPathBuilder
+        SkPathBuilder leftBuilder;
+        leftBuilder.moveTo(leftX + ornamentSize * 0.5f, centerY - ornamentSize * 0.5f);
+        leftBuilder.lineTo(leftX + ornamentSize, centerY);
+        leftBuilder.lineTo(leftX + ornamentSize * 0.5f, centerY + ornamentSize * 0.5f);
+        leftBuilder.lineTo(leftX, centerY);
+        leftBuilder.close();
+        canvas->drawPath(leftBuilder.detach(), ornamentPaint);
+        
+        // Right ornament (mirror of left)
+        float rightX = x + width - frameMargin - ornamentSize * 0.7f;
+        SkPathBuilder rightBuilder;
+        rightBuilder.moveTo(rightX + ornamentSize * 0.5f, centerY - ornamentSize * 0.5f);
+        rightBuilder.lineTo(rightX + ornamentSize, centerY);
+        rightBuilder.lineTo(rightX + ornamentSize * 0.5f, centerY + ornamentSize * 0.5f);
+        rightBuilder.lineTo(rightX, centerY);
+        rightBuilder.close();
+        canvas->drawPath(rightBuilder.detach(), ornamentPaint);
+        
+        // Add small decorative circles at corners
+        ornamentPaint.setStyle(SkPaint::kStroke_Style);
+        ornamentPaint.setStrokeWidth(height * 0.015f);
+        float circleRadius = height * 0.08f;
+        canvas->drawCircle(x + innerMargin + circleRadius * 1.5f, y + height * 0.5f, circleRadius, ornamentPaint);
+        canvas->drawCircle(x + width - innerMargin - circleRadius * 1.5f, y + height * 0.5f, circleRadius, ornamentPaint);
+    }
+    
     void parseQuranText() {
         const char* bism1 = "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ";
         const char* bism2 = "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ";
@@ -229,7 +302,7 @@ struct QuranRendererImpl {
         }
     }
     
-    void drawLine(QuranLine& lineText, skia_context_t* context, double lineWidth, bool justify, double scale, hb_color_t defaultTextColor = HB_COLOR(0, 0, 0, 255)) {
+    void drawLine(QuranLine& lineText, skia_context_t* context, double lineWidth, bool justify, double scale, hb_color_t defaultTextColor = HB_COLOR(0, 0, 0, 255), bool disableTajweed = false) {
         unsigned count = 0;
         hb_glyph_info_t* glyph_info = nullptr;
         hb_glyph_position_t* glyph_pos = nullptr;
@@ -250,7 +323,9 @@ struct QuranRendererImpl {
             hb_buffer_set_justify(buffer, lineWidth);
         }
         
-        features[0].value = tajweed ? 1 : 0;
+        // Disable tajweed for surah name lines - they should be plain black text
+        bool useTajweed = tajweed && !disableTajweed;
+        features[0].value = useTajweed ? 1 : 0;
         hb_shape(font, buffer, features, 1);
         
         glyph_info = hb_buffer_get_glyph_infos(buffer, &count);
@@ -333,7 +408,7 @@ struct QuranRendererImpl {
             auto color = defaultTextColor; // Use computed text color based on background
             // Tajweed color check: lookup_index >= tajweedcolorindex indicates a tajweed lookup was applied
             // and base_codepoint contains the RGB color encoded by HarfBuzz during GPOS processing
-            if (tajweed && glyph_pos[i].lookup_index >= tajweedcolorindex) {
+            if (useTajweed && glyph_pos[i].lookup_index >= tajweedcolorindex) {
                 color = HB_COLOR(
                     (glyph_pos[i].base_codepoint >> 8) & 0xff,
                     (glyph_pos[i].base_codepoint >> 16) & 0xff,
@@ -358,7 +433,7 @@ struct QuranRendererImpl {
         hb_buffer_destroy(buffer);
     }
     
-    void drawPage(void* pixels, int width, int height, int stride, int pageIndex, bool justify, float fontScale = 1.0f, uint32_t backgroundColor = 0xFFFFFFFF, int fontSize = 0, bool useForeground = false) {
+    void drawPage(void* pixels, int width, int height, int stride, int pageIndex, bool justify, float fontScale = 1.0f, uint32_t backgroundColor = 0xFFFFFFFF, int fontSize = 0, bool useForeground = false, bool showSurahFrame = true) {
         SkImageInfo imageInfo = SkImageInfo::Make(width, height, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
         auto canvas = SkCanvas::MakeRasterDirect(imageInfo, pixels, stride);
         
@@ -466,10 +541,35 @@ struct QuranRendererImpl {
             } else {
                 canvas->translate(x_start, y_start + lineIndex * inter_line);
             }
-            canvas->scale(renderScale, -renderScale);
             
             auto& linetext = pageText[lineIndex];
-            drawLine(linetext, &context, lineWidth, justify, renderScale, textColor);
+            
+            // Draw decorative frame for surah name lines
+            if (showSurahFrame && linetext.line_type == LineType::Sura) {
+                canvas->save();
+                canvas->resetMatrix();
+                // Position frame centered on the line
+                float frameWidth = width - 2 * x_padding;
+                float frameHeight = inter_line * 0.9f;
+                float frameX = x_padding;
+                float frameY = y_start + lineIndex * inter_line - frameHeight * 0.55f;
+                drawSurahFrame(canvas.get(), frameX, frameY, frameWidth, frameHeight, backgroundColor);
+                canvas->restore();
+                // Reset translation for text drawing
+                canvas->resetMatrix();
+                if (specialWidth != lineWidths.end()) {
+                    float xxstart = (pageWidth - lineWidth) / 2;
+                    canvas->translate(x_start - xxstart * renderScale, y_start + lineIndex * inter_line);
+                } else {
+                    canvas->translate(x_start, y_start + lineIndex * inter_line);
+                }
+            }
+            
+            canvas->scale(renderScale, -renderScale);
+            
+            // Disable tajweed coloring for surah name lines - they should be plain text
+            bool disableTajweed = (linetext.line_type == LineType::Sura);
+            drawLine(linetext, &context, lineWidth, justify, renderScale, textColor, disableTajweed);
         }
     }
     
@@ -520,7 +620,8 @@ void quran_renderer_draw_page(
         config ? config->fontScale : 1.0f,
         config ? config->backgroundColor : 0xFFFFFFFF,
         config ? config->fontSize : 0,
-        config ? config->useForeground : false
+        config ? config->useForeground : false,
+        config ? config->showSurahFrame : true
     );
 }
 
