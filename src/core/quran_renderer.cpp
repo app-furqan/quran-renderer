@@ -420,7 +420,24 @@ struct QuranRendererImpl {
         
         double scale = (double)char_height / upem;
         int x_start = width - x_padding;
-        double pageWidth = (width - 2 * x_padding) / scale;
+        
+        // CRITICAL: Use a fixed reference page width for HarfBuzz justification.
+        // HarfBuzz kashida justification and glyph positioning are calculated based on
+        // the target line width in font units. If this varies with font size, the glyph
+        // offsets (x_offset, y_offset) change, causing vowel marks to shift.
+        // 
+        // mushaf-android uses a fixed pageWidth of 17000 units. We calculate the actual
+        // rendering area based on screen dimensions and derive a consistent reference.
+        // The key is that the RATIO of lineWidth to pageWidth stays consistent.
+        const double referencePageWidth = 17000.0;  // Fixed reference width in font units
+        double actualPageWidth = (width - 2 * x_padding) / scale;  // Actual available width in font units
+        double pageWidthRatio = actualPageWidth / referencePageWidth;  // How much to scale the reference
+        
+        // Use reference page width for HarfBuzz justification (consistent glyph positioning)
+        double pageWidth = referencePageWidth;
+        
+        // Calculate the rendering scale adjustment to map reference coordinates to actual screen
+        double renderScale = scale * pageWidthRatio;
         
         if (pageIndex == 0 || pageIndex == 1) {
             y_start = y_start + 3.5 * inter_line;
@@ -449,14 +466,14 @@ struct QuranRendererImpl {
             if (specialWidth != lineWidths.end()) {
                 lineWidth = pageWidth * specialWidth->second;
                 float xxstart = (pageWidth - lineWidth) / 2;
-                canvas->translate(x_start - xxstart * scale, y_start + lineIndex * inter_line);
+                canvas->translate(x_start - xxstart * renderScale, y_start + lineIndex * inter_line);
             } else {
                 canvas->translate(x_start, y_start + lineIndex * inter_line);
             }
-            canvas->scale(scale, -scale);
+            canvas->scale(renderScale, -renderScale);
             
             auto& linetext = pageText[lineIndex];
-            drawLine(linetext, &context, lineWidth, justify, scale, textColor);
+            drawLine(linetext, &context, lineWidth, justify, renderScale, textColor);
         }
     }
     
