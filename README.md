@@ -24,6 +24,9 @@ This library renders Quran pages using:
 - **Font Size Scaling**: Adjustable text size (0.5x to 2.0x)
 - **Four Font Styles Included**: Madina Quranic (with tajweed), New Madina, Old Madina, and IndoPak
 - **High-Quality Rendering**: Skia-based rendering with anti-aliasing and subpixel positioning
+- **Decorative Surah Frames**: Teal/blue ornamental frames around surah names (inspired by DigitalKhatt)
+- **Dark Mode Support**: Automatic text color adaptation based on background luminance
+- **Configurable Line Height**: Adjustable line spacing via `lineHeightDivisor` parameter
 
 ## Architecture
 
@@ -743,6 +746,21 @@ class QuranActivity : AppCompatActivity() {
 
 The C API can be used from C, C++, Swift, or any language with C FFI support.
 
+#### QuranRenderConfig Structure
+
+| Field | Type | Description | Default |
+|-------|------|-------------|--------|
+| `tajweed` | `bool` | Enable tajweed coloring | `true` |
+| `justify` | `bool` | Enable kashida line justification | `true` |
+| `fontScale` | `float` | Font scale factor (DEPRECATED, use fontSize) | `1.0f` |
+| `backgroundColor` | `uint32_t` | Background color in RGBA format (0xRRGGBBAA) | `0xFFFFFFFF` (white) |
+| `fontSize` | `int` | Font size in pixels (0 = auto: `(width/17)*0.9`) | `0` (auto) |
+| `useForeground` | `bool` | Use foreground color for COLR glyphs | `false` |
+| `lineHeightDivisor` | `float` | Line spacing: `height / divisor` (0 = auto: 10.0 regular, 7.5 Fatiha) | `0.0f` (auto) |
+| `topMarginLines` | `float` | Top margin in line-heights (-1 = auto: no margin) | `-1.0f` (auto) |
+
+> **Note:** For dark mode, set `backgroundColor` to a dark color (e.g., `0x1A1A1AFF`). Text color automatically adapts based on background luminance.
+
 #### Basic Usage (C/C++)
 
 ```c
@@ -786,7 +804,12 @@ int main() {
     QuranRenderConfig config = {
         .tajweed = true,
         .justify = true,
-        .fontScale = 1.0f
+        .fontScale = 1.0f,
+        .backgroundColor = 0xFFFFFFFF,  // White background (RGBA)
+        .fontSize = 0,                   // Auto font size
+        .useForeground = false,
+        .lineHeightDivisor = 0.0f,       // Auto (10.0 for regular, 7.5 for Fatiha)
+        .topMarginLines = -1.0f          // Auto (no top margin)
     };
     
     quran_renderer_draw_page(renderer, &buffer, 0, &config);  // Page 0 = Al-Fatiha
