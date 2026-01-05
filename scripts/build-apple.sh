@@ -580,12 +580,21 @@ build_macos_dylib() {
         "$X64_BUILD_DIR/libquranrenderer.dylib" \
         -output "$OUTPUT_DIR/macos-dylib/libquranrenderer.dylib"
     
+    # Strip debug symbols for release
+    log_info "Stripping debug symbols..."
+    strip -x "$OUTPUT_DIR/macos-dylib/libquranrenderer.dylib"
+    
+    # Code sign the dylib (ad-hoc signing for distribution)
+    log_info "Code signing dylib..."
+    codesign --force --sign - --timestamp=none "$OUTPUT_DIR/macos-dylib/libquranrenderer.dylib"
+    
     # Copy header
     mkdir -p "$OUTPUT_DIR/macos-dylib/include"
     cp -r "$PROJECT_DIR/include/quran" "$OUTPUT_DIR/macos-dylib/include/"
     
     log_success "macOS dylib created: $OUTPUT_DIR/macos-dylib/libquranrenderer.dylib"
     log_info "  Architectures: $(lipo -info "$OUTPUT_DIR/macos-dylib/libquranrenderer.dylib")"
+    log_info "  Code signature: $(codesign -dv "$OUTPUT_DIR/macos-dylib/libquranrenderer.dylib" 2>&1 | grep Signature)"
 }
 
 # Main
