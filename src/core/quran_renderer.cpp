@@ -668,12 +668,12 @@ int quran_renderer_draw_text(
         targetWidth = buffer->width - 20.0f;  // 10px padding on each side
     }
     
-    // Auto font size: calculate based on line width or use default
+    // Auto font size: calculate based on buffer width (matches mushaf-android)
     int fontSize = config ? config->fontSize : 0;
     if (fontSize <= 0) {
-        // Default to 48px if no other hint available
-        // Could be enhanced to auto-fit based on text length
-        fontSize = 48;
+        // Auto-calculate: (width / 17) * 0.9 - same formula as page rendering
+        fontSize = static_cast<int>((buffer->width / 17.0f) * 0.9f);
+        if (fontSize < 12) fontSize = 12;  // Minimum readable size
     }
     
     // Auto-detect text color if not specified (0 means auto)
@@ -870,10 +870,12 @@ int quran_renderer_draw_multiline_text(
     // Extract configuration with defaults for auto (0) values
     uint32_t bgColor = config ? config->backgroundColor : 0xFFFFFFFF;
     
-    // Auto font size
+    // Auto font size: calculate based on buffer width (matches mushaf-android)
     int fontSize = config ? config->fontSize : 0;
     if (fontSize <= 0) {
-        fontSize = 48;  // Default
+        // Auto-calculate: (width / 17) * 0.9 - same formula as page rendering
+        fontSize = static_cast<int>((buffer->width / 17.0f) * 0.9f);
+        if (fontSize < 12) fontSize = 12;  // Minimum readable size
     }
     
     // Auto line spacing (0 = 1.5x default)

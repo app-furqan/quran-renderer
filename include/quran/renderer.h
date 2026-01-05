@@ -50,7 +50,7 @@ typedef struct {
     bool justify;       // Enable line justification
     float fontScale;    // Font scale factor (1.0 = default, 0.8-1.2 recommended) - DEPRECATED, use fontSize
     uint32_t backgroundColor; // Background color in RGBA format (0xRRGGBBAA, default: 0xFFFFFFFF for white)
-    int fontSize;       // Font size in pixels (0 = auto-fit to screen, 75 = recommended default for consistent vowel mark positioning)
+    int fontSize;       // Font size in pixels (0 = auto, calculated as (width/17)*0.9 to match mushaf-android)
     bool useForeground; // If true, use foreground color when COLR requests use_foreground
 } QuranRenderConfig;
 
