@@ -529,6 +529,65 @@ build_all_libraries() {
     create_xcframework
 }
 
+# Build macOS dynamic library (dylib)
+build_macos_dylib() {
+    log_info "Building macOS dylib..."
+    
+    mkdir -p "$OUTPUT_DIR/macos-dylib"
+    
+    # Build arm64 dylib
+    local ARM64_BUILD_DIR="$OUTPUT_DIR/build-macos-dylib-arm64"
+    mkdir -p "$ARM64_BUILD_DIR"
+    cd "$ARM64_BUILD_DIR"
+    
+    cmake "$PROJECT_DIR" \
+        -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=ON \
+        -DHARFBUZZ_INCLUDE_DIR="$DEPS_DIR/harfbuzz/src" \
+        -DHARFBUZZ_LIBRARY_DIR="$DEPS_DIR/harfbuzz-build-macos-arm64" \
+        -DSKIA_INCLUDE_DIR="$DEPS_DIR/skia" \
+        -DSKIA_LIBRARY_DIR="$DEPS_DIR/skia/out/macos-arm64" \
+        -DQURAN_TEXT_DIR="$DEPS_DIR/visualmetafont/src/qurantext" \
+        -DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOS_DEPLOYMENT_TARGET \
+        -DCMAKE_OSX_ARCHITECTURES=arm64
+    
+    ninja
+    
+    # Build x86_64 dylib
+    local X64_BUILD_DIR="$OUTPUT_DIR/build-macos-dylib-x86_64"
+    mkdir -p "$X64_BUILD_DIR"
+    cd "$X64_BUILD_DIR"
+    
+    cmake "$PROJECT_DIR" \
+        -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_SHARED_LIBS=ON \
+        -DHARFBUZZ_INCLUDE_DIR="$DEPS_DIR/harfbuzz/src" \
+        -DHARFBUZZ_LIBRARY_DIR="$DEPS_DIR/harfbuzz-build-macos-x86_64" \
+        -DSKIA_INCLUDE_DIR="$DEPS_DIR/skia" \
+        -DSKIA_LIBRARY_DIR="$DEPS_DIR/skia/out/macos-x86_64" \
+        -DQURAN_TEXT_DIR="$DEPS_DIR/visualmetafont/src/qurantext" \
+        -DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOS_DEPLOYMENT_TARGET \
+        -DCMAKE_OSX_ARCHITECTURES=x86_64
+    
+    ninja
+    
+    # Create universal dylib using lipo
+    log_info "Creating universal dylib..."
+    lipo -create \
+        "$ARM64_BUILD_DIR/libquranrenderer.dylib" \
+        "$X64_BUILD_DIR/libquranrenderer.dylib" \
+        -output "$OUTPUT_DIR/macos-dylib/libquranrenderer.dylib"
+    
+    # Copy header
+    mkdir -p "$OUTPUT_DIR/macos-dylib/include"
+    cp -r "$PROJECT_DIR/include/quran" "$OUTPUT_DIR/macos-dylib/include/"
+    
+    log_success "macOS dylib created: $OUTPUT_DIR/macos-dylib/libquranrenderer.dylib"
+    log_info "  Architectures: $(lipo -info "$OUTPUT_DIR/macos-dylib/libquranrenderer.dylib")"
+}
+
 # Main
 main() {
     log_info "==========================================="
@@ -552,6 +611,11 @@ main() {
     
     build_all_libraries
     
+    # Build macOS dylib (in addition to static libraries)
+    if [[ "$IOS_ONLY" != true ]]; then
+        build_macos_dylib
+    fi
+    
     # Copy fonts
     mkdir -p "$OUTPUT_DIR/fonts"
     cp "$DEPS_DIR/fonts/digitalkhatt.otf" "$OUTPUT_DIR/fonts/"
@@ -563,6 +627,7 @@ main() {
     log_info "Output: $OUTPUT_DIR"
     log_info ""
     log_info "XCFramework: $OUTPUT_DIR/QuranRenderer.xcframework"
+    log_info "macOS dylib: $OUTPUT_DIR/macos-dylib/"
     log_info ""
     log_info "Usage in Xcode:"
     log_info "  1. Drag QuranRenderer.xcframework to your project"
@@ -574,11 +639,11 @@ main() {
         ls -la "$OUTPUT_DIR/QuranRenderer.xcframework/"
     fi
     
-    # Create release zip
+    # Create release zip (now includes macos-dylib)
     local ZIP_PATH="${PROJECT_DIR}/build/quran-renderer-apple-release.zip"
     log_info ""
     log_info "Creating release zip..."
-    (cd "$OUTPUT_DIR" && rm -f "$ZIP_PATH" && zip -r "$ZIP_PATH" QuranRenderer.xcframework ios ios-simulator macos fonts)
+    (cd "$OUTPUT_DIR" && rm -f "$ZIP_PATH" && zip -r "$ZIP_PATH" QuranRenderer.xcframework ios ios-simulator macos macos-dylib fonts)
     log_success "Release zip: $ZIP_PATH"
 }
 
