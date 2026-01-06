@@ -642,6 +642,7 @@ struct QuranRendererImpl {
         context.canvas = canvas.get();
         context.paint = &paint;
         context.foreground = HB_COLOR(0, 0, 0, 255);
+        context.backgroundColor = HB_COLOR(bg_r, bg_g, bg_b, bg_a);
         context.use_foreground_override = useForeground;
         
         auto& pageText = pages[pageIndex];
@@ -1009,6 +1010,7 @@ int quran_renderer_draw_text(
     skia_context_t context{};
     context.canvas = canvas.get();
     context.paint = &paint;
+    context.backgroundColor = HB_COLOR(bg_r, bg_g, bg_b, bg_a);
     
     // Extract text color
     uint8_t txt_r = (textColor >> 24) & 0xFF;

@@ -130,6 +130,14 @@ hb_skia_push_clip_glyph (hb_paint_funcs_t *pfuncs HB_UNUSED,
     c->path = pathBuilder.detach();
 }
 
+// Check if a color is near-white (within tolerance)
+static bool isNearWhite(hb_color_t color, int tolerance = 10) {
+    int r = hb_color_get_red(color);
+    int g = hb_color_get_green(color);
+    int b = hb_color_get_blue(color);
+    return (r >= 255 - tolerance && g >= 255 - tolerance && b >= 255 - tolerance);
+}
+
 static void
 hb_skia_paint_color (hb_paint_funcs_t *pfuncs HB_UNUSED,
                       void *paint_data,
@@ -144,12 +152,16 @@ hb_skia_paint_color (hb_paint_funcs_t *pfuncs HB_UNUSED,
     // - If HarfBuzz says use_foreground, use the foreground color
     // - Otherwise use the embedded font color (for tajweed and COLR glyphs)
     //
-    // Note: COLR glyphs like ayah numbers are self-contained with their own
-    // internal background (white) and foreground (black digits, blue decorations).
-    // We render them exactly as designed - they have built-in contrast.
+    // Special handling for COLR glyphs (ayah numbers):
+    // - White fills (colorID 1) are remapped to match the canvas background
+    // - This makes the ayah glyph's internal background transparent to the page
     hb_color_t finalColor;
     if (c->use_foreground_override || use_foreground) {
         finalColor = c->foreground;
+    } else if (isNearWhite(color)) {
+        // Remap white COLR fills to the canvas background color
+        // This makes ayah glyphs adapt to dark/light backgrounds
+        finalColor = c->backgroundColor;
     } else {
         finalColor = color;
     }

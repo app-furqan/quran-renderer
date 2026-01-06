@@ -15,6 +15,7 @@ typedef struct
     SkPath path;
     SkPaint * paint;
     hb_color_t foreground;          // Foreground color for text
+    hb_color_t backgroundColor;     // Background color for remapping COLR white fills
     bool use_foreground_override;   // If true, keep foreground fixed (do not update per glyph)
 } skia_context_t;
 
