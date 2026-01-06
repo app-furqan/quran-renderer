@@ -143,20 +143,14 @@ hb_skia_paint_color (hb_paint_funcs_t *pfuncs HB_UNUSED,
     // - If use_foreground_override is set (tajweed OFF), always use the foreground color
     // - If HarfBuzz says use_foreground, use the foreground color
     // - Otherwise use the embedded font color (for tajweed and COLR glyphs)
+    //
+    // Note: COLR glyphs like ayah numbers are self-contained with their own
+    // internal background (white) and foreground (black digits, blue decorations).
+    // We render them exactly as designed - they have built-in contrast.
     hb_color_t finalColor;
     if (c->use_foreground_override || use_foreground) {
         finalColor = c->foreground;
     } else {
-        // For COLR palette colors: skip near-black colors entirely (make them transparent)
-        // This allows the canvas background to show through for ayah number glyphs
-        // which have black in their COLR palette (meant for white backgrounds)
-        uint8_t r = hb_color_get_red(color);
-        uint8_t g = hb_color_get_green(color);
-        uint8_t b = hb_color_get_blue(color);
-        if (r < 32 && g < 32 && b < 32) {
-            // Skip drawing - let canvas background show through
-            return;
-        }
         finalColor = color;
     }
     
