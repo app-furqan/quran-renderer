@@ -281,8 +281,16 @@ struct QuranRendererImpl {
         // Add a tiny buffer (2%) just to prevent pixel-level touching
         int requiredLineHeight = static_cast<int>(maxHeightPixels * 1.02);
         
-        // Return the exact minimum required - as tight as possible without overlapping
-        return requiredLineHeight;
+        // CRITICAL: Ensure 15 lines fit within the page height
+        // The layout places lines at: y_start + lineIndex * inter_line
+        // where y_start = inter_line * 0.72 (for first line baseline)
+        // Last line baseline: 0.72 * inter_line + 14 * inter_line = 14.72 * inter_line
+        // Text below baseline needs ~0.28 * inter_line, so max Y ≈ 15 * inter_line
+        // To fit within page: inter_line <= height / 15
+        int maxLineHeight = height / 15;
+        
+        // Use the smaller of the required height and max that fits
+        return std::min(requiredLineHeight, maxLineHeight);
     }
     
     // Draw a decorative surah name frame
