@@ -85,6 +85,32 @@ inline hb_color_t getTextColorForBackground(uint32_t backgroundColor) {
         : HB_COLOR(0, 0, 0, 255);        // Black text for light backgrounds
 }
 
+// Check if a UTF-8 position in text corresponds to an ayah number marker
+// Ayah markers use U+06DD (End of Ayah) and Arabic-Indic digits U+0660-U+0669
+inline bool isAyahNumberChar(const std::string& text, unsigned int cluster) {
+    if (cluster >= text.size()) return false;
+    
+    // Decode UTF-8 character at cluster position
+    unsigned char c0 = static_cast<unsigned char>(text[cluster]);
+    
+    // Check for 3-byte UTF-8 sequences (Arabic characters are in this range)
+    if ((c0 & 0xF0) == 0xE0 && cluster + 2 < text.size()) {
+        unsigned char c1 = static_cast<unsigned char>(text[cluster + 1]);
+        unsigned char c2 = static_cast<unsigned char>(text[cluster + 2]);
+        
+        // Decode the codepoint
+        uint32_t codepoint = ((c0 & 0x0F) << 12) | ((c1 & 0x3F) << 6) | (c2 & 0x3F);
+        
+        // U+06DD = End of Ayah mark (۝)
+        if (codepoint == 0x06DD) return true;
+        
+        // U+0660-U+0669 = Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩)
+        if (codepoint >= 0x0660 && codepoint <= 0x0669) return true;
+    }
+    
+    return false;
+}
+
 } // anonymous namespace
 
 struct QuranRendererImpl {
@@ -422,7 +448,7 @@ struct QuranRendererImpl {
         }
     }
     
-    void drawLine(QuranLine& lineText, skia_context_t* context, double lineWidth, bool justify, double scale, hb_color_t defaultTextColor = HB_COLOR(0, 0, 0, 255), bool disableTajweed = false) {
+    void drawLine(QuranLine& lineText, skia_context_t* context, double lineWidth, bool justify, double scale, hb_color_t defaultTextColor = HB_COLOR(0, 0, 0, 255), bool disableTajweed = false, bool isDarkBackground = false) {
         unsigned count = 0;
         hb_glyph_info_t* glyph_info = nullptr;
         hb_glyph_position_t* glyph_pos = nullptr;
@@ -526,6 +552,17 @@ struct QuranRendererImpl {
             // https://github.com/DigitalKhatt/digitalkhatt.org/blob/master/ClientApp/src/app/services/tajweed.service.ts
             
             auto color = defaultTextColor; // Use computed text color based on background
+            
+            // Special handling for ayah number glyphs: keep original colors on dark backgrounds
+            // Ayah numbers (۝١, ۝٢, etc.) are COLR glyphs with their own color palette
+            // They should retain their original styling regardless of background
+            bool isAyahGlyph = isAyahNumberChar(lineText.text, glyph_info[i].cluster);
+            if (isAyahGlyph && isDarkBackground) {
+                // Use black for ayah number text on dark backgrounds to match mushaf-android
+                // The COLR glyph's decorative elements keep their palette colors
+                color = HB_COLOR(0, 0, 0, 255);
+            }
+            
             // Tajweed color check: lookup_index >= tajweedcolorindex indicates a tajweed lookup was applied
             // and base_codepoint contains the RGB color encoded by HarfBuzz during GPOS processing
             if (useTajweed && glyph_pos[i].lookup_index >= tajweedcolorindex) {
@@ -660,6 +697,7 @@ struct QuranRendererImpl {
         
         // Compute text color based on background luminance
         hb_color_t textColor = getTextColorForBackground(backgroundColor);
+        bool bgIsDark = isDarkBackground(backgroundColor);
 
         // Ensure foreground color follows the computed text color.
         // This matters when COLR/painted glyphs request "use_foreground"; in that case
@@ -708,7 +746,7 @@ struct QuranRendererImpl {
             
             // Disable tajweed coloring for surah name lines - they should be plain text
             bool disableTajweed = (linetext.line_type == LineType::Sura);
-            drawLine(linetext, &context, lineWidth, justify, renderScale, textColor, disableTajweed);
+            drawLine(linetext, &context, lineWidth, justify, renderScale, textColor, disableTajweed, bgIsDark);
         }
     }
     
