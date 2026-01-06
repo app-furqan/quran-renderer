@@ -623,11 +623,10 @@ struct QuranRendererImpl {
         int x_padding = width / 42.5;
         
         // Line height divisor: user-specified or auto
-        // Auto: 17.0 for regular pages (15 lines + margins), 9.0 for Fatiha pages (7 lines)
-        // Higher divisor = tighter spacing (better for mobile screens)
+        // Auto: 10.0 for regular pages, 7.5 for Fatiha pages (fewer lines, more spacing)
         float effectiveLineHeightDivisor = lineHeightDivisor;
         if (effectiveLineHeightDivisor <= 0.0f) {
-            effectiveLineHeightDivisor = isFatihaPage ? 9.0f : 17.0f;
+            effectiveLineHeightDivisor = isFatihaPage ? 7.5f : 10.0f;
         }
         
         if (fontSize > 0) {
