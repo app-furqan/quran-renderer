@@ -417,6 +417,29 @@ build_library_platform() {
     cmake "$PROJECT_DIR" "${CMAKE_ARGS[@]}"
     ninja
     
+    # Merge all static libraries (quran_renderer + HarfBuzz + Skia) into one
+    # This is critical - without this, the output .a only contains quran_renderer
+    # and has undefined symbols for HarfBuzz/Skia
+    log_info "Merging static libraries for $PLATFORM-$ARCH..."
+    
+    local HARFBUZZ_LIB="$DEPS_DIR/harfbuzz-build-$PLATFORM-$ARCH/libharfbuzz.a"
+    local SKIA_LIB="$DEPS_DIR/skia/out/$PLATFORM-$ARCH/libskia.a"
+    local RENDERER_LIB="$BUILD_DIR/libquran_renderer.a"
+    local MERGED_LIB="$BUILD_DIR/libquranrenderer_merged.a"
+    
+    # CMake outputs libquran_renderer.a (with underscore) - rename to final name
+    if [[ -f "$BUILD_DIR/libquranrenderer.a" ]]; then
+        RENDERER_LIB="$BUILD_DIR/libquranrenderer.a"
+    fi
+    
+    # Use libtool to merge static libraries (preserves all object files)
+    libtool -static -o "$MERGED_LIB" "$RENDERER_LIB" "$HARFBUZZ_LIB" "$SKIA_LIB"
+    
+    # Replace the original with merged version
+    mv "$MERGED_LIB" "$BUILD_DIR/libquranrenderer.a"
+    
+    log_info "Merged library size: $(du -h "$BUILD_DIR/libquranrenderer.a" | cut -f1)"
+    
     # Copy individual arch build to platform directory for packaging
     if [[ "$PLATFORM" == "macos" ]]; then
         mkdir -p "$OUTPUT_DIR/macos/lib"
