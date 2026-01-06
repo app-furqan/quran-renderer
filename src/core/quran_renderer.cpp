@@ -304,15 +304,11 @@ struct QuranRendererImpl {
         double renderScale = scale * pageWidthRatio;
         int maxHeightPixels = static_cast<int>(maxTotalHeight * renderScale);
         
-        // Add a small buffer (10%) to prevent touching
-        int requiredLineHeight = static_cast<int>(maxHeightPixels * 1.1);
+        // Add a tiny buffer (2%) just to prevent pixel-level touching
+        int requiredLineHeight = static_cast<int>(maxHeightPixels * 1.02);
         
-        // Calculate the default line height for comparison
-        float defaultDivisor = isFatihaPage ? 7.5f : 10.0f;
-        int defaultLineHeight = static_cast<int>(height / defaultDivisor);
-        
-        // Return the larger of the two to ensure no overlap
-        return std::max(requiredLineHeight, defaultLineHeight);
+        // Return the exact minimum required - as tight as possible without overlapping
+        return requiredLineHeight;
     }
     
     // Draw a decorative surah name frame
@@ -622,22 +618,22 @@ struct QuranRendererImpl {
         int inter_line;
         int x_padding = width / 42.5;
         
-        // Line height divisor: user-specified or auto
-        // Auto: 10.0 for regular pages, 7.5 for Fatiha pages (fewer lines, more spacing)
-        float effectiveLineHeightDivisor = lineHeightDivisor;
-        if (effectiveLineHeightDivisor <= 0.0f) {
-            effectiveLineHeightDivisor = isFatihaPage ? 7.5f : 10.0f;
+        // Calculate the optimal (minimum) line height based on actual glyph measurements
+        // This is the tightest spacing possible without any overlap
+        int optimalLineHeight = calculateOptimalLineHeight(pageIndex, width, height, x_padding, fontScale);
+        
+        // lineHeightDivisor adds EXTRA spacing on top of the optimal
+        // Value > 0 means: add (height / lineHeightDivisor) extra pixels per line
+        // Default 0 = no extra spacing, just the optimal tight layout
+        int extraSpacing = 0;
+        if (lineHeightDivisor > 0.0f) {
+            extraSpacing = static_cast<int>(height / lineHeightDivisor);
         }
         
         if (fontSize > 0) {
-            // Use explicit font size with proportional line height.
-            // Arabic text requires significant line height for vowel marks:
-            // - Marks above (fatha, damma, shadda, etc.) need ~40% of font height above
-            // - Marks below (kasra, etc.) need ~20% of font height below
-            // - Total line height should be approximately 1.8-2.0x font size for proper spacing
+            // Use explicit font size
             char_height = fontSize;
-            // Use intelligent overlap detection to calculate optimal line height
-            inter_line = calculateOptimalLineHeight(pageIndex, width, height, x_padding, fontScale);
+            inter_line = optimalLineHeight + extraSpacing;
         } else {
             // Auto-fit: Match mushaf-android exactly
             // Apply font scale factor (clamp to reasonable range)
@@ -646,13 +642,8 @@ struct QuranRendererImpl {
             // mushaf-android uses char_height = (dstInfo.width / 17) * 0.9
             char_height = static_cast<int>((width / 17.0) * 0.9 * clampedScale);
             
-            // Use intelligent line height if auto (lineHeightDivisor <= 0)
-            // This measures actual glyph extents and ensures no overlaps
-            if (lineHeightDivisor <= 0.0f) {
-                inter_line = calculateOptimalLineHeight(pageIndex, width, height, x_padding, fontScale);
-            } else {
-                inter_line = static_cast<int>(height / effectiveLineHeightDivisor);
-            }
+            // Use optimal line height + any extra spacing from user
+            inter_line = optimalLineHeight + extraSpacing;
         }
         
         // y_start positions the first line's baseline.
