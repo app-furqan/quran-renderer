@@ -122,6 +122,9 @@ set_target_properties(quran_renderer PROPERTIES
 if(QURAN_RENDERER_BUILD_RENDER_TEST)
     add_executable(render_dark_tajweed_test tools/render_dark_tajweed_test.cpp)
     target_link_libraries(render_dark_tajweed_test PRIVATE quran_renderer)
+    
+    add_executable(render_text_test tools/render_text_test.cpp)
+    target_link_libraries(render_text_test PRIVATE quran_renderer)
 endif()
 
 # Export header

@@ -85,32 +85,6 @@ inline hb_color_t getTextColorForBackground(uint32_t backgroundColor) {
         : HB_COLOR(0, 0, 0, 255);        // Black text for light backgrounds
 }
 
-// Check if a UTF-8 position in text corresponds to an ayah number marker
-// Ayah markers use U+06DD (End of Ayah) and Arabic-Indic digits U+0660-U+0669
-inline bool isAyahNumberChar(const std::string& text, unsigned int cluster) {
-    if (cluster >= text.size()) return false;
-    
-    // Decode UTF-8 character at cluster position
-    unsigned char c0 = static_cast<unsigned char>(text[cluster]);
-    
-    // Check for 3-byte UTF-8 sequences (Arabic characters are in this range)
-    if ((c0 & 0xF0) == 0xE0 && cluster + 2 < text.size()) {
-        unsigned char c1 = static_cast<unsigned char>(text[cluster + 1]);
-        unsigned char c2 = static_cast<unsigned char>(text[cluster + 2]);
-        
-        // Decode the codepoint
-        uint32_t codepoint = ((c0 & 0x0F) << 12) | ((c1 & 0x3F) << 6) | (c2 & 0x3F);
-        
-        // U+06DD = End of Ayah mark (۝)
-        if (codepoint == 0x06DD) return true;
-        
-        // U+0660-U+0669 = Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩)
-        if (codepoint >= 0x0660 && codepoint <= 0x0669) return true;
-    }
-    
-    return false;
-}
-
 } // anonymous namespace
 
 struct QuranRendererImpl {
@@ -549,16 +523,6 @@ struct QuranRendererImpl {
             
             auto color = defaultTextColor; // Use computed text color based on background
             
-            // Special handling for ayah number glyphs: keep original colors on dark backgrounds
-            // Ayah numbers (۝١, ۝٢, etc.) are COLR glyphs with their own color palette
-            // They should retain their original styling regardless of background
-            bool isAyahGlyph = isAyahNumberChar(lineText.text, glyph_info[i].cluster);
-            if (isAyahGlyph && isDarkBackground) {
-                // Use black for ayah number text on dark backgrounds to match mushaf-android
-                // The COLR glyph's decorative elements keep their palette colors
-                color = HB_COLOR(0, 0, 0, 255);
-            }
-            
             // Tajweed color check: lookup_index >= tajweedcolorindex indicates a tajweed lookup was applied
             // and base_codepoint contains the RGB color encoded by HarfBuzz during GPOS processing
             if (useTajweed && glyph_pos[i].lookup_index >= tajweedcolorindex) {
@@ -570,7 +534,8 @@ struct QuranRendererImpl {
                 );
             }
             // Update context foreground before painting so COLR use_foreground layers
-            // can access it. This is important for ayah number glyphs in dark mode.
+            // can access it. Dark mode remapping of near-black palette colors happens
+            // in hb_skia_paint_color callback via context.dark_mode flag.
             context->foreground = color;
             hb_font_paint_glyph(font, glyph_index, paint_funcs, context, 0, color);
             
@@ -694,6 +659,7 @@ struct QuranRendererImpl {
         // This matters when COLR/painted glyphs request "use_foreground"; in that case
         // hb_skia_paint_color may use context.foreground (when override is enabled).
         context.foreground = textColor;
+        context.dark_mode = bgIsDark;  // Enable dark mode color remapping
         paint.setColor(SkColorSetARGB(
             hb_color_get_alpha(textColor),
             hb_color_get_red(textColor),
@@ -981,7 +947,14 @@ int quran_renderer_draw_text(
     uint8_t txt_b = (textColor >> 8) & 0xFF;
     hb_color_t hbTextColor = HB_COLOR(txt_r, txt_g, txt_b, 255);
     context.foreground = hbTextColor;
-    context.use_foreground_override = false;
+    
+    // When tajweed is OFF, use_foreground_override=true forces all glyphs to use
+    // the text color, ignoring font-embedded colors (including tajweed)
+    bool useTajweed = config ? config->tajweed : true;
+    context.use_foreground_override = !useTajweed;
+    
+    // Enable dark mode color remapping if background is dark (bgColor already defined above)
+    context.dark_mode = isDarkBackground(bgColor);
     
     // Create and shape the text
     hb_buffer_t* hbBuffer = hb_buffer_create();
@@ -999,8 +972,7 @@ int quran_renderer_draw_text(
         hb_buffer_set_justify(hbBuffer, lineWidth);
     }
     
-    // Shape with tajweed based on config (default: enabled)
-    bool useTajweed = config ? config->tajweed : true;
+    // Shape with tajweed based on config (useTajweed already set earlier)
     renderer->features[0].value = useTajweed ? 1 : 0;
     hb_shape(renderer->font, hbBuffer, renderer->features, 1);
     
