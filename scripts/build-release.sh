@@ -354,6 +354,7 @@ setup_visualmetafont() {
 # Download fonts
 download_fonts() {
     local FONTS_DIR="$DEPS_DIR/fonts"
+    local VMF_FONT="$DEPS_DIR/visualmetafont/examples/testvarfont/digitalkhatt-cff2.otf"
     
     # Check if already downloaded
     if [[ -f "$FONTS_DIR/digitalkhatt.otf" ]]; then
@@ -361,13 +362,20 @@ download_fonts() {
         return 0
     fi
     
-    log_info "Downloading fonts..."
+    log_info "Setting up fonts..."
     mkdir -p "$FONTS_DIR"
     
-    curl -L -o "$FONTS_DIR/digitalkhatt.otf" \
-        "https://github.com/DigitalKhatt/mushaf-android/raw/main/app/src/main/assets/fonts/digitalkhatt.otf"
-    
-    log_success "Fonts downloaded"
+    # Prefer the CFF2 variable font with embedded tajweed (172 GPOS lookups)
+    # from visualmetafont if available, otherwise download the older version
+    if [[ -f "$VMF_FONT" ]]; then
+        cp "$VMF_FONT" "$FONTS_DIR/digitalkhatt.otf"
+        log_success "Using CFF2 font with embedded tajweed from visualmetafont"
+    else
+        log_info "CFF2 font not found, downloading standard font..."
+        curl -L -o "$FONTS_DIR/digitalkhatt.otf" \
+            "https://github.com/DigitalKhatt/mushaf-android/raw/main/app/src/main/assets/fonts/digitalkhatt.otf"
+        log_success "Fonts downloaded"
+    fi
 }
 
 # Build quran-renderer for a platform
