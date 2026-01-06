@@ -52,7 +52,7 @@ quran-renderer/
 ├── scripts/
 │   ├── build-dependencies.sh   # Android dependencies builder
 │   ├── build-linux.sh          # Linux build script
-│   └── build-apple.sh          # iOS/macOS build script
+│   └── build-release.sh        # Full release build (all platforms)
 ├── CMakeLists.txt              # Cross-platform CMake config
 └── local.properties.template
 ```
@@ -250,28 +250,40 @@ The build script automatically caches dependencies in `../quran-deps/`. Subseque
 
 ---
 
-## iOS/macOS Build
+## Building from Source
 
-Build an XCFramework for iOS and macOS (requires macOS with Xcode):
+### Full Release Build (All Platforms)
+
+Build a complete release package for iOS, macOS, and Android (requires macOS with Xcode and Android SDK):
 
 ```bash
 # Clone the repository
 git clone https://github.com/hussainak/quran-renderer.git
 cd quran-renderer
 
-# Run the Apple build script
-./scripts/build-apple.sh
+# Run the release build script
+./scripts/build-release.sh
 ```
 
-**Output:**
-- `build/apple/QuranRenderer.xcframework` - Universal framework
-  - iOS device (arm64)
-  - iOS Simulator (arm64, x86_64)
-  - macOS (arm64, x86_64)
+**Output:** `build/quran-renderer-release.zip`
+
+The release zip contains:
+
+| Platform | Path | Description |
+|----------|------|-------------|
+| **iOS/macOS** | `QuranRenderer.xcframework/` | Universal XCFramework for Xcode |
+| **iOS** | `ios/lib/libquranrenderer.a` | iOS arm64 static library |
+| **iOS Simulator** | `ios-simulator/lib/libquranrenderer.a` | Simulator (arm64 + x86_64) |
+| **macOS** | `macos/lib/libquranrenderer.a` | macOS static library (arm64 + x86_64) |
+| **macOS dylib** | `macos-dylib/libquranrenderer.dylib` | macOS dynamic library + headers |
+| **Android arm64** | `android/arm64-v8a/libquranrenderer.so` | Android 64-bit ARM |
+| **Android arm32** | `android/armeabi-v7a/libquranrenderer.so` | Android 32-bit ARM |
+| **Android x86_64** | `android/x86_64/libquranrenderer.so` | Android x86_64 (emulator) |
+| **Font** | `fonts/digitalkhatt.otf` | DigitalKhatt Quran font |
 
 **Build Options:**
 ```bash
-./scripts/build-apple.sh --help
+./scripts/build-release.sh --help
 
 Options:
   --deps-dir PATH    Directory for dependencies (default: ../quran-deps)
@@ -283,9 +295,9 @@ Options:
 ```
 
 **Requirements:**
-- macOS with Xcode
-- Xcode Command Line Tools
-- CMake, Ninja, Python 3
+- macOS with Xcode and Command Line Tools
+- CMake 3.22+, Ninja, Python 3
+- Android SDK with NDK 28.0.12674087 (for Android builds)
 
 **Xcode Integration:**
 1. Drag `QuranRenderer.xcframework` into your Xcode project

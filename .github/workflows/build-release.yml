@@ -55,14 +55,14 @@ jobs:
         id: deps-cache
         with:
           path: ../quran-deps
-          key: ${{ env.DEPS_CACHE_KEY }}-macos-all-${{ hashFiles('scripts/build-apple.sh', 'scripts/build-android-so.sh', 'scripts/build-dependencies.sh') }}
+          key: ${{ env.DEPS_CACHE_KEY }}-macos-all-${{ hashFiles('scripts/build-release.sh', 'scripts/build-android-so.sh', 'scripts/build-dependencies.sh') }}
           restore-keys: |
             ${{ env.DEPS_CACHE_KEY }}-macos-all-
 
       - name: Build Apple libraries (iOS + macOS XCFramework)
         run: |
-          chmod +x scripts/build-apple.sh
-          ./scripts/build-apple.sh
+          chmod +x scripts/build-release.sh
+          ./scripts/build-release.sh
 
       - name: Build Android .so (all ABIs)
         run: |
