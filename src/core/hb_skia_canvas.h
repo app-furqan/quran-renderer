@@ -16,7 +16,6 @@ typedef struct
     SkPaint * paint;
     hb_color_t foreground;          // Foreground color for text
     bool use_foreground_override;   // If true, keep foreground fixed (do not update per glyph)
-    bool dark_mode;                 // If true, remap near-black palette colors to foreground
 } skia_context_t;
 
 void hb_skia_paint_glyph (hb_font_t *font,

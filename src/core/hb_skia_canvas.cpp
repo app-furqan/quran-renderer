@@ -148,20 +148,6 @@ hb_skia_paint_color (hb_paint_funcs_t *pfuncs HB_UNUSED,
         finalColor = c->foreground;
     } else {
         finalColor = color;
-        
-        // Dark mode fix: If the font's palette color is near-black and our background is dark,
-        // substitute the foreground color to ensure visibility.
-        // The ayah number digits in DigitalKhatt font have black in their COLR palette,
-        // which works on light backgrounds but is invisible on dark backgrounds.
-        if (c->dark_mode) {
-            uint8_t r = hb_color_get_red(color);
-            uint8_t g = hb_color_get_green(color);
-            uint8_t b = hb_color_get_blue(color);
-            // Consider "near black" as colors with all channels < 32
-            if (r < 32 && g < 32 && b < 32) {
-                finalColor = c->foreground;
-            }
-        }
     }
     
     c->paint->setColor(SkColorSetARGB(

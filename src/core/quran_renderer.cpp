@@ -418,7 +418,7 @@ struct QuranRendererImpl {
         }
     }
     
-    void drawLine(QuranLine& lineText, skia_context_t* context, double lineWidth, bool justify, double scale, hb_color_t defaultTextColor = HB_COLOR(0, 0, 0, 255), bool disableTajweed = false, bool isDarkBackground = false) {
+    void drawLine(QuranLine& lineText, skia_context_t* context, double lineWidth, bool justify, double scale, hb_color_t defaultTextColor = HB_COLOR(0, 0, 0, 255), bool disableTajweed = false) {
         unsigned count = 0;
         hb_glyph_info_t* glyph_info = nullptr;
         hb_glyph_position_t* glyph_pos = nullptr;
@@ -534,8 +534,7 @@ struct QuranRendererImpl {
                 );
             }
             // Update context foreground before painting so COLR use_foreground layers
-            // can access it. Dark mode remapping of near-black palette colors happens
-            // in hb_skia_paint_color callback via context.dark_mode flag.
+            // can access it.
             context->foreground = color;
             hb_font_paint_glyph(font, glyph_index, paint_funcs, context, 0, color);
             
@@ -653,13 +652,11 @@ struct QuranRendererImpl {
         
         // Compute text color based on background luminance
         hb_color_t textColor = getTextColorForBackground(backgroundColor);
-        bool bgIsDark = isDarkBackground(backgroundColor);
 
         // Ensure foreground color follows the computed text color.
         // This matters when COLR/painted glyphs request "use_foreground"; in that case
         // hb_skia_paint_color may use context.foreground (when override is enabled).
         context.foreground = textColor;
-        context.dark_mode = bgIsDark;  // Enable dark mode color remapping
         paint.setColor(SkColorSetARGB(
             hb_color_get_alpha(textColor),
             hb_color_get_red(textColor),
@@ -703,7 +700,7 @@ struct QuranRendererImpl {
             
             // Disable tajweed coloring for surah name lines - they should be plain text
             bool disableTajweed = (linetext.line_type == LineType::Sura);
-            drawLine(linetext, &context, lineWidth, justify, renderScale, textColor, disableTajweed, bgIsDark);
+            drawLine(linetext, &context, lineWidth, justify, renderScale, textColor, disableTajweed);
         }
     }
     
@@ -952,9 +949,6 @@ int quran_renderer_draw_text(
     // the text color, ignoring font-embedded colors (including tajweed)
     bool useTajweed = config ? config->tajweed : true;
     context.use_foreground_override = !useTajweed;
-    
-    // Enable dark mode color remapping if background is dark (bgColor already defined above)
-    context.dark_mode = isDarkBackground(bgColor);
     
     // Create and shape the text
     hb_buffer_t* hbBuffer = hb_buffer_create();
