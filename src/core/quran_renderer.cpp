@@ -176,6 +176,119 @@ struct QuranRendererImpl {
         return true;
     }
     
+    // Structure to hold line extent measurements
+    struct LineExtents {
+        int maxAscent;   // Maximum height above baseline (positive)
+        int maxDescent;  // Maximum depth below baseline (positive)
+        int totalHeight; // maxAscent + maxDescent
+    };
+    
+    // Measure the vertical extents of a single line of text
+    // Returns the max ascent (above baseline) and descent (below baseline) in font units
+    LineExtents measureLineExtents(const std::string& text, double lineWidth, bool justify) {
+        LineExtents extents = {0, 0, 0};
+        
+        hb_buffer_t* buffer = hb_buffer_create();
+        hb_buffer_set_direction(buffer, HB_DIRECTION_RTL);
+        hb_buffer_set_script(buffer, HB_SCRIPT_ARABIC);
+        hb_buffer_set_language(buffer, ar_language);
+        
+        hb_buffer_add_utf8(buffer, text.c_str(), text.size(), 0, text.size());
+        
+        if (justify) {
+            hb_buffer_set_justify(buffer, lineWidth);
+        }
+        
+        // Shape without tajweed for measurement (faster)
+        hb_feature_t measureFeatures[1] = {{ HB_TAG('t', 'j', 'w', 'd'), 0, 0, (unsigned int)-1 }};
+        hb_shape(font, buffer, measureFeatures, 1);
+        
+        unsigned int count;
+        hb_glyph_info_t* glyph_info = hb_buffer_get_glyph_infos(buffer, &count);
+        hb_glyph_position_t* glyph_pos = hb_buffer_get_glyph_positions(buffer, &count);
+        
+        for (unsigned int i = 0; i < count; i++) {
+            hb_glyph_extents_t glyph_extents;
+            if (hb_font_get_glyph_extents(font, glyph_info[i].codepoint, &glyph_extents)) {
+                // y_bearing is the top of the glyph relative to baseline (positive = above)
+                // height is negative (extends downward from y_bearing)
+                int glyphTop = glyph_extents.y_bearing + glyph_pos[i].y_offset;
+                int glyphBottom = glyph_extents.y_bearing + glyph_extents.height + glyph_pos[i].y_offset;
+                
+                // Track maximum extent above baseline (positive values)
+                if (glyphTop > extents.maxAscent) {
+                    extents.maxAscent = glyphTop;
+                }
+                
+                // Track maximum extent below baseline (negative values, convert to positive)
+                if (glyphBottom < 0 && -glyphBottom > extents.maxDescent) {
+                    extents.maxDescent = -glyphBottom;
+                }
+            }
+        }
+        
+        extents.totalHeight = extents.maxAscent + extents.maxDescent;
+        
+        hb_buffer_destroy(buffer);
+        return extents;
+    }
+    
+    // Calculate the optimal line height for a page to avoid overlaps
+    // Returns the minimum inter_line spacing needed in pixels
+    int calculateOptimalLineHeight(int pageIndex, int width, int height, int x_padding, float fontScale = 1.0f) {
+        if (pageIndex < 0 || pageIndex >= (int)pages.size()) {
+            return height / 10;  // Default fallback
+        }
+        
+        auto& pageText = pages[pageIndex];
+        bool isFatihaPage = (pageIndex == 0 || pageIndex == 1);
+        
+        // Calculate char_height and scale (same as in drawPage)
+        float clampedScale = std::max(0.5f, std::min(2.0f, fontScale));
+        int char_height = static_cast<int>((width / 17.0) * 0.9 * clampedScale);
+        double scale = (double)char_height / upem;
+        
+        const double referencePageWidth = 17000.0;
+        double actualPageWidth = (width - 2 * x_padding) / scale;
+        double pageWidthRatio = actualPageWidth / referencePageWidth;
+        double pageWidth = referencePageWidth;
+        
+        // Measure all lines and find the maximum required spacing
+        int maxTotalHeight = 0;
+        
+        for (size_t lineIndex = 0; lineIndex < pageText.size(); lineIndex++) {
+            auto& linetext = pageText[lineIndex];
+            
+            // Get line width for this specific line
+            double lineWidth = pageWidth;
+            auto specialWidth = lineWidths.find(pageIndex * 15 + lineIndex);
+            if (specialWidth != lineWidths.end()) {
+                lineWidth = pageWidth * specialWidth->second;
+            }
+            
+            bool shouldJustify = (linetext.just_type == JustType::just);
+            LineExtents extents = measureLineExtents(linetext.text, lineWidth, shouldJustify);
+            
+            if (extents.totalHeight > maxTotalHeight) {
+                maxTotalHeight = extents.totalHeight;
+            }
+        }
+        
+        // Convert from font units to pixels
+        double renderScale = scale * pageWidthRatio;
+        int maxHeightPixels = static_cast<int>(maxTotalHeight * renderScale);
+        
+        // Add a small buffer (10%) to prevent touching
+        int requiredLineHeight = static_cast<int>(maxHeightPixels * 1.1);
+        
+        // Calculate the default line height for comparison
+        float defaultDivisor = isFatihaPage ? 7.5f : 10.0f;
+        int defaultLineHeight = static_cast<int>(height / defaultDivisor);
+        
+        // Return the larger of the two to ensure no overlap
+        return std::max(requiredLineHeight, defaultLineHeight);
+    }
+    
     // Draw a decorative surah name frame
     // Based on ayaframe.svg from DigitalKhatt
     void drawSurahFrame(SkCanvas* canvas, float x, float y, float width, float height, uint32_t backgroundColor) {
@@ -486,8 +599,8 @@ struct QuranRendererImpl {
             // - Marks below (kasra, etc.) need ~20% of font height below
             // - Total line height should be approximately 1.8-2.0x font size for proper spacing
             char_height = fontSize;
-            // Use 1.8x multiplier to prevent overlaps between lines with marks
-            inter_line = static_cast<int>(fontSize * 1.8);
+            // Use intelligent overlap detection to calculate optimal line height
+            inter_line = calculateOptimalLineHeight(pageIndex, width, height, x_padding, fontScale);
         } else {
             // Auto-fit: Match mushaf-android exactly
             // Apply font scale factor (clamp to reasonable range)
@@ -495,7 +608,14 @@ struct QuranRendererImpl {
             
             // mushaf-android uses char_height = (dstInfo.width / 17) * 0.9
             char_height = static_cast<int>((width / 17.0) * 0.9 * clampedScale);
-            inter_line = static_cast<int>(height / effectiveLineHeightDivisor);
+            
+            // Use intelligent line height if auto (lineHeightDivisor <= 0)
+            // This measures actual glyph extents and ensures no overlaps
+            if (lineHeightDivisor <= 0.0f) {
+                inter_line = calculateOptimalLineHeight(pageIndex, width, height, x_padding, fontScale);
+            } else {
+                inter_line = static_cast<int>(height / effectiveLineHeightDivisor);
+            }
         }
         
         // y_start positions the first line's baseline.
