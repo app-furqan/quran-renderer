@@ -691,7 +691,8 @@ struct QuranRendererImpl {
         
         // Font size and line height calculation
         int inter_line;
-        int x_padding = width / 42.5;
+        // Increased padding from width/42.5 to width/25 for better margins
+        int x_padding = width / 25;
 
         // lineHeightDivisor adds EXTRA spacing on top of the optimal
         // Value > 0 means: add (height / lineHeightDivisor) extra pixels per line
@@ -1269,8 +1270,8 @@ int quran_renderer_draw_multiline_text(
         if (fontSize < 12) fontSize = 12;  // Minimum readable size
     }
     
-    // Auto line spacing (0 = 1.5x default)
-    float spacing = (lineSpacing > 0) ? lineSpacing : 1.5f;
+    // Auto line spacing (0 = 0.5x default for tighter ayah spacing)
+    float spacing = (lineSpacing > 0) ? lineSpacing : 0.5f;
     
     // Set up Skia canvas and clear background
     SkImageInfo imageInfo = SkImageInfo::Make(
@@ -1305,7 +1306,8 @@ int quran_renderer_draw_multiline_text(
     }
 
     // Line height needs to accommodate Arabic marks above and below
-    int baseLineHeight = static_cast<int>(fontSize * 1.5f);
+    // Reduced from 1.5x to 1.2x for tighter spacing
+    int baseLineHeight = static_cast<int>(fontSize * 1.2f);
     int lineHeight = static_cast<int>(baseLineHeight * spacing);
     
     // Calculate top margin
@@ -1427,7 +1429,7 @@ int quran_renderer_draw_wrapped_text(
         maxLineWidth = buffer->width * 0.9f;  // 90% of buffer as fallback
     }
     
-    float spacing = (lineSpacing > 0) ? lineSpacing : 1.5f;
+    float spacing = (lineSpacing > 0) ? lineSpacing : 0.5f;
     
     // Set up Skia canvas and clear background
     SkImageInfo imageInfo = SkImageInfo::Make(
@@ -1513,8 +1515,8 @@ int quran_renderer_draw_wrapped_text(
     }
     
     // Line height must accommodate Arabic marks above and below
-    // Use 1.5x fontSize to give room for marks above (fatha, damma, etc.) and below
-    int baseLineHeight = static_cast<int>(fontSize * 1.5f);
+    // Reduced from 1.5x to 1.2x for tighter spacing
+    int baseLineHeight = static_cast<int>(fontSize * 1.2f);
     int lineHeight = static_cast<int>(baseLineHeight * spacing);
     
     // Start Y position with top margin
