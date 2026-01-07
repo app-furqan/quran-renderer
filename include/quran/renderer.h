@@ -186,6 +186,7 @@ int quran_renderer_get_ayah_count(int surahNumber);
 #define QURAN_FONT_SIZE_AUTO        0           // Auto-calculate font size to fit line width
 #define QURAN_LINE_WIDTH_AUTO       0.0f        // Use buffer width as line width
 #define QURAN_LINE_SPACING_AUTO     0.0f        // Use default 1.5x line spacing
+#define QURAN_MARGIN_AUTO           -1.0f       // Auto-calculate margin (~5% of lineWidth)
 
 /**
  * Configuration for rendering arbitrary Arabic text
@@ -206,6 +207,8 @@ typedef struct {
     float lineWidth;          // Target line width in pixels (0 = QURAN_LINE_WIDTH_AUTO)
     bool rightToLeft;         // Text direction (true for Arabic, default: true)
     bool tajweed;             // Enable tajweed coloring (default: true)
+    float marginLeft;         // Left margin in pixels (-1 = auto ~5%, 0 = none)
+    float marginRight;        // Right margin in pixels (-1 = auto ~5%, 0 = none)
 } QuranTextConfig;
 
 /**
@@ -219,6 +222,8 @@ typedef struct {
  * - lineWidth: 0 (auto - use buffer width)
  * - rightToLeft: true
  * - tajweed: true (enabled by default)
+ * - marginLeft: -1 (auto ~5%)
+ * - marginRight: -1 (auto ~5%)
  */
 static inline QuranTextConfig quran_text_config_default(void) {
     QuranTextConfig config = {0};
@@ -229,6 +234,8 @@ static inline QuranTextConfig quran_text_config_default(void) {
     config.lineWidth = QURAN_LINE_WIDTH_AUTO;
     config.rightToLeft = true;
     config.tajweed = true;  // Tajweed coloring enabled by default
+    config.marginLeft = QURAN_MARGIN_AUTO;   // Auto margin
+    config.marginRight = QURAN_MARGIN_AUTO;  // Auto margin
     return config;
 }
 

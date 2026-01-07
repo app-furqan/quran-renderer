@@ -1123,13 +1123,25 @@ int quran_renderer_draw_text(
         totalWidth += glyph_pos[i].x_advance;
     }
     
-    // Position text (RTL: start from right)
-    int x_start = buffer->width - 10; // 10px padding from right
+    // Calculate margins for positioning
+    float marginRight = config ? config->marginRight : -1.0f;
+    float marginLeft = config ? config->marginLeft : -1.0f;
+    
+    // Auto margin: 5% of buffer width, minimum 10px
+    if (marginRight < 0) {
+        marginRight = std::max(10.0f, buffer->width * 0.05f);
+    }
+    if (marginLeft < 0) {
+        marginLeft = std::max(10.0f, buffer->width * 0.05f);
+    }
+    
+    // Position text (RTL: start from right edge minus right margin)
+    int x_start = static_cast<int>(buffer->width - marginRight);
     int y_start = fontSize + 10;      // Baseline position
     
     canvas->resetMatrix();
     canvas->translate(x_start, y_start);
-    canvas->scale(scale, -scale);
+    canvas->scale(scale, -scale);;
     
     // Render glyphs
     for (int i = count - 1; i >= 0; i--) {
@@ -1375,8 +1387,35 @@ int quran_renderer_draw_wrapped_text(
     int fontSize = config ? config->fontSize : 0;
     if (fontSize <= 0) fontSize = 48;
     
+    // Calculate margins (auto = ~5% of buffer width)
+    float marginLeft = config ? config->marginLeft : -1.0f;
+    float marginRight = config ? config->marginRight : -1.0f;
+    
+    // Auto margin: 5% of buffer width, minimum 10px
+    if (marginLeft < 0) {
+        marginLeft = std::max(10.0f, buffer->width * 0.05f);
+    }
+    if (marginRight < 0) {
+        marginRight = std::max(10.0f, buffer->width * 0.05f);
+    }
+    
+    // Calculate effective line width considering margins
     float maxLineWidth = config ? config->lineWidth : 0;
-    if (maxLineWidth <= 0) maxLineWidth = buffer->width - 20.0f;
+    if (maxLineWidth <= 0) {
+        // Auto: use buffer width minus margins
+        maxLineWidth = buffer->width - marginLeft - marginRight;
+    } else {
+        // User specified lineWidth - ensure it fits within buffer with margins
+        float availableWidth = buffer->width - marginLeft - marginRight;
+        if (maxLineWidth > availableWidth) {
+            maxLineWidth = availableWidth;
+        }
+    }
+    
+    // Ensure we have positive width
+    if (maxLineWidth <= 0) {
+        maxLineWidth = buffer->width * 0.9f;  // 90% of buffer as fallback
+    }
     
     float spacing = (lineSpacing > 0) ? lineSpacing : 1.5f;
     
@@ -1393,16 +1432,15 @@ int quran_renderer_draw_wrapped_text(
     uint8_t bg_a = bgColor & 0xFF;
     canvas->drawColor(SkColorSetARGB(bg_a, bg_r, bg_g, bg_b));
     
-    // Split text into words
+    // Split text into words (only at whitespace boundaries - never break mid-word)
     std::vector<std::string> words = splitIntoWords(text, len);
     
-    // Build lines by measuring and wrapping
+    // Build lines by measuring and wrapping at word boundaries
     std::vector<std::string> lines;
     std::string currentLine;
     int currentLineWidth = 0;
     
-    // Calculate space width - use a typical Arabic word separator width
-    // Measure a word with and without space to get accurate space width
+    // Calculate space width using HarfBuzz measurement
     int spaceWidth = 0;
     {
         int withSpace = 0, withoutSpace = 0;
@@ -1421,17 +1459,25 @@ int quran_renderer_draw_wrapped_text(
         
         if (currentLine.empty()) {
             // First word on line
-            currentLine = word;
-            currentLineWidth = wordWidth;
+            // Handle very long words that exceed maxLineWidth
+            if (wordWidth > maxLineWidth) {
+                // Word is too long - still add it (will be clipped, but don't break mid-word)
+                // For Arabic, breaking mid-word would disconnect letters incorrectly
+                currentLine = word;
+                currentLineWidth = wordWidth;
+            } else {
+                currentLine = word;
+                currentLineWidth = wordWidth;
+            }
         } else {
-            // Check if word fits on current line
+            // Check if word fits on current line (with space between)
             int newWidth = currentLineWidth + spaceWidth + wordWidth;
             if (newWidth <= maxLineWidth) {
                 // Fits - add with space
                 currentLine += " " + word;
                 currentLineWidth = newWidth;
             } else {
-                // Doesn't fit - start new line
+                // Doesn't fit - push current line and start new line with this word
                 lines.push_back(currentLine);
                 currentLine = word;
                 currentLineWidth = wordWidth;
@@ -1444,30 +1490,50 @@ int quran_renderer_draw_wrapped_text(
         lines.push_back(currentLine);
     }
     
-    // Create sub-config for rendering
+    // Create sub-config for rendering each line
     QuranTextConfig lineConfig = config ? *config : QuranTextConfig{};
     lineConfig.fontSize = fontSize;
-    lineConfig.backgroundColor = 0x00000000; // Transparent
+    lineConfig.backgroundColor = 0x00000000; // Transparent (background already cleared)
+    lineConfig.lineWidth = maxLineWidth;     // Use calculated line width
+    lineConfig.marginLeft = 0;               // Margins handled by this function
+    lineConfig.marginRight = 0;
+    
+    // Resolve auto text color
     if (config && config->textColor == 0) {
         lineConfig.textColor = isDarkBackground(bgColor) ? 0xFFFFFFFF : 0x000000FF;
     }
     
-    // Line height must accommodate the full glyph height plus spacing
-    // Arabic text can have marks above and below, so use ~1.3x fontSize as base height
+    // Line height must accommodate Arabic marks above and below
     int baseLineHeight = static_cast<int>(fontSize * 1.3f);
     int lineHeight = static_cast<int>(baseLineHeight * spacing);
-    int yOffset = 0;
+    
+    // Start Y position with top margin (same as left margin for consistency)
+    int yOffset = static_cast<int>(marginLeft);
     
     for (size_t i = 0; i < lines.size(); i++) {
-        // Ensure sub-buffer has enough height for the text
-        int neededHeight = fontSize + 20;  // fontSize + padding for marks
+        // Ensure sub-buffer has enough height for the text plus marks
+        int neededHeight = static_cast<int>(fontSize * 1.5f);
         if (buffer->height - yOffset < neededHeight) break;
         
-        QuranPixelBuffer lineBuffer = *buffer;
-        lineBuffer.pixels = static_cast<uint8_t*>(buffer->pixels) + (yOffset * buffer->stride);
+        // Create a sub-buffer positioned with margins
+        // The sub-buffer starts at marginLeft from the left edge
+        QuranPixelBuffer lineBuffer;
+        lineBuffer.width = buffer->width;
         lineBuffer.height = std::min(neededHeight, buffer->height - yOffset);
+        lineBuffer.stride = buffer->stride;
+        lineBuffer.pixels = static_cast<uint8_t*>(buffer->pixels) + (yOffset * buffer->stride);
         
-        quran_renderer_draw_text(renderer, &lineBuffer, lines[i].c_str(), -1, &lineConfig);
+        // Render the line - draw_text handles RTL positioning from the right
+        // We need to adjust the starting position to account for right margin
+        // Since draw_text starts from (buffer->width - 10), we create a virtual buffer
+        // that's offset by the margins
+        
+        // Create a config that adjusts for the margins
+        QuranTextConfig marginConfig = lineConfig;
+        // The effective rendering width is maxLineWidth, positioned with margins
+        marginConfig.lineWidth = maxLineWidth;
+        
+        quran_renderer_draw_text(renderer, &lineBuffer, lines[i].c_str(), -1, &marginConfig);
         
         yOffset += lineHeight;
     }
