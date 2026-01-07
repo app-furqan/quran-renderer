@@ -1141,7 +1141,7 @@ int quran_renderer_draw_text(
     
     canvas->resetMatrix();
     canvas->translate(x_start, y_start);
-    canvas->scale(scale, -scale);;
+    canvas->scale(scale, -scale);
     
     // Render glyphs
     for (int i = count - 1; i >= 0; i--) {
@@ -1304,8 +1304,16 @@ int quran_renderer_draw_multiline_text(
         lineConfig.textColor = isDarkBackground(bgColor) ? 0xFFFFFFFF : 0x000000FF;
     }
 
-    int lineHeight = static_cast<int>(fontSize * spacing);
-    int yOffset = 0;
+    // Line height needs to accommodate Arabic marks above and below
+    int baseLineHeight = static_cast<int>(fontSize * 1.5f);
+    int lineHeight = static_cast<int>(baseLineHeight * spacing);
+    
+    // Calculate top margin
+    float marginLeft = config ? config->marginLeft : -1.0f;
+    if (marginLeft < 0) {
+        marginLeft = std::max(10.0f, buffer->width * 0.05f);
+    }
+    int yOffset = static_cast<int>(marginLeft);  // Use same margin for top
     
     for (size_t i = 0; i < lines.size(); i++) {
         if (lines[i].empty()) {
@@ -1314,9 +1322,11 @@ int quran_renderer_draw_multiline_text(
         }
         
         // Create a sub-buffer for this line (share the same pixel data)
+        // Allocate enough height for marks above and below
+        int neededHeight = static_cast<int>(fontSize * 2.0f);
         QuranPixelBuffer lineBuffer = *buffer;
         lineBuffer.pixels = static_cast<uint8_t*>(buffer->pixels) + (yOffset * buffer->stride);
-        lineBuffer.height = buffer->height - yOffset;
+        lineBuffer.height = std::min(neededHeight, buffer->height - yOffset);
         
         if (lineBuffer.height <= 0) break;
         
@@ -1495,8 +1505,7 @@ int quran_renderer_draw_wrapped_text(
     lineConfig.fontSize = fontSize;
     lineConfig.backgroundColor = 0x00000000; // Transparent (background already cleared)
     lineConfig.lineWidth = maxLineWidth;     // Use calculated line width
-    lineConfig.marginLeft = 0;               // Margins handled by this function
-    lineConfig.marginRight = 0;
+    // Note: margins will be set per-line in the loop below
     
     // Resolve auto text color
     if (config && config->textColor == 0) {
@@ -1504,34 +1513,34 @@ int quran_renderer_draw_wrapped_text(
     }
     
     // Line height must accommodate Arabic marks above and below
-    int baseLineHeight = static_cast<int>(fontSize * 1.3f);
+    // Use 1.5x fontSize to give room for marks above (fatha, damma, etc.) and below
+    int baseLineHeight = static_cast<int>(fontSize * 1.5f);
     int lineHeight = static_cast<int>(baseLineHeight * spacing);
     
-    // Start Y position with top margin (same as left margin for consistency)
+    // Start Y position with top margin
     int yOffset = static_cast<int>(marginLeft);
     
     for (size_t i = 0; i < lines.size(); i++) {
         // Ensure sub-buffer has enough height for the text plus marks
-        int neededHeight = static_cast<int>(fontSize * 1.5f);
+        // Arabic text needs extra height for marks above (fatha, damma, shadda, etc.)
+        int neededHeight = static_cast<int>(fontSize * 2.0f);
         if (buffer->height - yOffset < neededHeight) break;
         
         // Create a sub-buffer positioned with margins
-        // The sub-buffer starts at marginLeft from the left edge
+        // For RTL text, we need to offset the buffer so text starts at the right margin
         QuranPixelBuffer lineBuffer;
         lineBuffer.width = buffer->width;
         lineBuffer.height = std::min(neededHeight, buffer->height - yOffset);
         lineBuffer.stride = buffer->stride;
         lineBuffer.pixels = static_cast<uint8_t*>(buffer->pixels) + (yOffset * buffer->stride);
         
-        // Render the line - draw_text handles RTL positioning from the right
-        // We need to adjust the starting position to account for right margin
-        // Since draw_text starts from (buffer->width - 10), we create a virtual buffer
-        // that's offset by the margins
-        
-        // Create a config that adjusts for the margins
+        // Create a config with explicit margins for this line
+        // The right margin positions where RTL text starts
+        // The left margin limits how far left the text can extend
         QuranTextConfig marginConfig = lineConfig;
-        // The effective rendering width is maxLineWidth, positioned with margins
         marginConfig.lineWidth = maxLineWidth;
+        marginConfig.marginRight = marginRight;  // Use calculated right margin
+        marginConfig.marginLeft = marginLeft;    // Use calculated left margin
         
         quran_renderer_draw_text(renderer, &lineBuffer, lines[i].c_str(), -1, &marginConfig);
         
