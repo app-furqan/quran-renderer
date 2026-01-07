@@ -232,64 +232,32 @@ struct QuranRendererImpl {
         hb_buffer_destroy(buffer);
         return extents;
     }
-    
-    // Calculate the optimal font scale for given dimensions to avoid overlaps
-    // Returns a scale factor that ensures 15 lines fit without overlapping
-    float calculateOptimalFontScale(int pageIndex, int width, int height, int x_padding, float requestedFontScale = 1.0f) {
+
+    int calculateMaxLineTotalHeightUnits(int pageIndex, double pageWidth) {
         if (pageIndex < 0 || pageIndex >= (int)pages.size()) {
-            return requestedFontScale;
+            return 0;
         }
-        
+
         auto& pageText = pages[pageIndex];
-        
-        // Maximum available line height (15 lines must fit in page height)
-        int maxLineHeight = height / 15;
-        
-        // Calculate char_height at requested scale
-        float clampedScale = std::max(0.5f, std::min(2.0f, requestedFontScale));
-        int char_height = static_cast<int>((width / 17.0) * 0.9 * clampedScale);
-        double scale = (double)char_height / upem;
-        
-        const double referencePageWidth = 17000.0;
-        double actualPageWidth = (width - 2 * x_padding) / scale;
-        double pageWidthRatio = actualPageWidth / referencePageWidth;
-        double pageWidth = referencePageWidth;
-        
-        // Measure all lines to find max required height in font units
+
         int maxTotalHeight = 0;
         for (size_t lineIndex = 0; lineIndex < pageText.size(); lineIndex++) {
             auto& linetext = pageText[lineIndex];
-            
+
             double lineWidth = pageWidth;
             auto specialWidth = lineWidths.find(pageIndex * 15 + lineIndex);
             if (specialWidth != lineWidths.end()) {
                 lineWidth = pageWidth * specialWidth->second;
             }
-            
+
             bool shouldJustify = (linetext.just_type == JustType::just);
             LineExtents extents = measureLineExtents(linetext.text, lineWidth, shouldJustify);
-            
             if (extents.totalHeight > maxTotalHeight) {
                 maxTotalHeight = extents.totalHeight;
             }
         }
-        
-        // Convert from font units to pixels at requested scale
-        double renderScale = scale * pageWidthRatio;
-        int requiredLineHeight = static_cast<int>(maxTotalHeight * renderScale * 1.02);
-        
-        // If the required line height fits, no adjustment needed
-        if (requiredLineHeight <= maxLineHeight) {
-            return clampedScale;
-        }
-        
-        // Calculate the scale factor needed to fit
-        // requiredLineHeight scales linearly with font scale
-        float scaleFactor = (float)maxLineHeight / (float)requiredLineHeight;
-        float adjustedScale = clampedScale * scaleFactor;
-        
-        // Don't go below minimum readable scale
-        return std::max(0.5f, adjustedScale);
+
+        return maxTotalHeight;
     }
     
     // Calculate the optimal line height for a page to avoid overlaps
@@ -710,20 +678,9 @@ struct QuranRendererImpl {
         bool isFatihaPage = (pageIndex == 0 || pageIndex == 1);
         
         // Font size and line height calculation
-        int char_height;
         int inter_line;
         int x_padding = width / 42.5;
-        
-        // SMART FONT SCALING: Calculate optimal font scale that prevents line overlaps
-        // In landscape mode, the wider screen would normally make fonts larger,
-        // but the reduced height can't accommodate 15 lines. This adjusts the scale
-        // downward when needed to ensure all lines fit without overlapping.
-        float effectiveFontScale = calculateOptimalFontScale(pageIndex, width, height, x_padding, fontScale);
-        
-        // Calculate the optimal (minimum) line height based on actual glyph measurements
-        // This is the tightest spacing possible without any overlap
-        int optimalLineHeight = calculateOptimalLineHeight(pageIndex, width, height, x_padding, effectiveFontScale);
-        
+
         // lineHeightDivisor adds EXTRA spacing on top of the optimal
         // Value > 0 means: add (height / lineHeightDivisor) extra pixels per line
         // Default 0 = no extra spacing, just the optimal tight layout
@@ -731,28 +688,53 @@ struct QuranRendererImpl {
         if (lineHeightDivisor > 0.0f) {
             extraSpacing = static_cast<int>(height / lineHeightDivisor);
         }
-        
-        if (fontSize > 0) {
-            // Use explicit font size - but still respect height constraints
-            // Calculate what the required line height would be for this font size
-            float fontSizeScale = (float)fontSize / ((width / 17.0f) * 0.9f);
-            float safeFontScale = calculateOptimalFontScale(pageIndex, width, height, x_padding, fontSizeScale);
-            
-            // If the explicit font size would cause overlap, scale it down
-            if (safeFontScale < fontSizeScale) {
-                char_height = static_cast<int>(fontSize * (safeFontScale / fontSizeScale));
-            } else {
-                char_height = fontSize;
-            }
-            inter_line = optimalLineHeight + extraSpacing;
-        } else {
-            // Auto-fit: Match mushaf-android exactly, with smart scaling for landscape
-            // mushaf-android uses char_height = (dstInfo.width / 17) * 0.9
-            char_height = static_cast<int>((width / 17.0) * 0.9 * effectiveFontScale);
-            
-            // Use optimal line height + any extra spacing from user
-            inter_line = optimalLineHeight + extraSpacing;
+
+        // --- Render scale (pixels per font unit) ---
+        // Previous logic derived renderScale as: (char_height/upem) * ((width-2*pad)/(char_height/upem)/reference)
+        // which cancels char_height entirely. That makes fontScale ineffective and can cause overlaps in landscape
+        // because glyphs scale up with width while line slots shrink with height.
+        //
+        // New logic:
+        // - Compute a width-based render scale (fills available width)
+        // - Compute a height-based render scale (ensures 15 lines fit without overlap)
+        // - Use the smaller one
+        const double referencePageWidth = 17000.0;
+        const double pageWidth = referencePageWidth;
+
+        float clampedScale = std::max(0.5f, std::min(2.0f, fontScale));
+
+        // Width-based: fill the page width (scaled by fontScale)
+        double renderScaleWidth = ((width - 2.0 * x_padding) / referencePageWidth) * clampedScale;
+
+        // If explicit font size is provided, treat it as a target glyph size in pixels
+        // by mapping it to font units.
+        if (fontSize > 0 && upem > 0) {
+            renderScaleWidth = (double)fontSize / (double)upem;
         }
+
+        // Height-based: ensure max glyph height fits inside one of 15 line slots
+        int maxTotalHeightUnits = calculateMaxLineTotalHeightUnits(pageIndex, pageWidth);
+        int maxLineSlotPx = height / 15;
+        int availableGlyphSlotPx = std::max(1, maxLineSlotPx - extraSpacing);
+
+        // 2% safety buffer matches the previous extents->pixels conversion
+        double renderScaleHeight = renderScaleWidth;
+        if (maxTotalHeightUnits > 0) {
+            renderScaleHeight = (double)availableGlyphSlotPx / ((double)maxTotalHeightUnits * 1.02);
+        }
+
+        double renderScale = std::min(renderScaleWidth, renderScaleHeight);
+
+        // Compute inter-line spacing from the chosen renderScale
+        int requiredGlyphHeightPx = 0;
+        if (maxTotalHeightUnits > 0) {
+            requiredGlyphHeightPx = static_cast<int>(std::ceil((double)maxTotalHeightUnits * renderScale * 1.02));
+        }
+
+        // Ensure we never go below at least 1px for the glyph slot
+        requiredGlyphHeightPx = std::max(1, requiredGlyphHeightPx);
+
+        inter_line = std::min(maxLineSlotPx, requiredGlyphHeightPx + extraSpacing);
         
         // y_start positions the first line's baseline.
         // Arabic text needs room above the baseline for marks (fatha, damma, shadda, etc.)
@@ -760,7 +742,6 @@ struct QuranRendererImpl {
         // This leaves ~28% of line height for marks above, ~72% for base + marks below
         int y_start = static_cast<int>(inter_line * 0.72);
         
-        double scale = (double)char_height / upem;
         int x_start = width - x_padding;
         
         // CRITICAL: Use a fixed reference page width for HarfBuzz justification.
@@ -771,15 +752,8 @@ struct QuranRendererImpl {
         // mushaf-android uses a fixed pageWidth of 17000 units. We calculate the actual
         // rendering area based on screen dimensions and derive a consistent reference.
         // The key is that the RATIO of lineWidth to pageWidth stays consistent.
-        const double referencePageWidth = 17000.0;  // Fixed reference width in font units
-        double actualPageWidth = (width - 2 * x_padding) / scale;  // Actual available width in font units
-        double pageWidthRatio = actualPageWidth / referencePageWidth;  // How much to scale the reference
-        
         // Use reference page width for HarfBuzz justification (consistent glyph positioning)
-        double pageWidth = referencePageWidth;
-        
-        // Calculate the rendering scale adjustment to map reference coordinates to actual screen
-        double renderScale = scale * pageWidthRatio;
+        // Render scale is computed above (constrained by width + height).
         
         // Top margin: user-specified or auto
         // Auto: 0 for regular pages (start at top), 0 for Fatiha too (removed old 3.5 offset)
