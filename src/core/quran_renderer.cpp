@@ -1087,10 +1087,10 @@ int quran_renderer_draw_text(
     hb_color_t hbTextColor = HB_COLOR(txt_r, txt_g, txt_b, 255);
     context.foreground = hbTextColor;
     
-    // When tajweed is OFF, use_foreground_override=true forces all glyphs to use
-    // the text color, ignoring font-embedded colors (including tajweed)
+    // Tajweed handling: when tajweed is enabled, allow font colors through (use_foreground_override=false)
+    // When disabled, force all glyphs to use foreground color (use_foreground_override=true)
     bool useTajweed = config ? config->tajweed : true;
-    context.use_foreground_override = !useTajweed;
+    context.use_foreground_override = !useTajweed;  // false when tajweed enabled = allow font colors
     
     // Create and shape the text
     hb_buffer_t* hbBuffer = hb_buffer_create();
@@ -1149,9 +1149,9 @@ int quran_renderer_draw_text(
         // Must match drawLine(): use y_offset directly (canvas Y is already flipped by -scale)
         canvas->translate(glyph_pos[i].x_offset, glyph_pos[i].y_offset);
         
-        // Handle tajweed colors: lookup_index >= 152 indicates tajweed lookup was applied
+        // Handle tajweed colors: lookup_index >= tajweedcolorindex indicates tajweed lookup was applied
         hb_color_t glyphColor = hbTextColor;
-        if (useTajweed && glyph_pos[i].lookup_index >= 152) {
+        if (useTajweed && glyph_pos[i].lookup_index >= renderer->tajweedcolorindex) {
             glyphColor = HB_COLOR(
                 (glyph_pos[i].base_codepoint >> 8) & 0xff,
                 (glyph_pos[i].base_codepoint >> 16) & 0xff,
@@ -1160,6 +1160,8 @@ int quran_renderer_draw_text(
             );
         }
         
+        // Update context foreground before painting so COLR use_foreground layers can access it
+        context.foreground = glyphColor;
         hb_font_paint_glyph(renderer->font, glyph_index, renderer->paint_funcs, &context, 0, glyphColor);
         
         canvas->translate(-glyph_pos[i].x_offset, -glyph_pos[i].y_offset);
