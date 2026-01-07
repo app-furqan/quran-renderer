@@ -1270,8 +1270,8 @@ int quran_renderer_draw_multiline_text(
         if (fontSize < 12) fontSize = 12;  // Minimum readable size
     }
     
-    // Auto line spacing (0 = 0.5x default for tighter ayah spacing)
-    float spacing = (lineSpacing > 0) ? lineSpacing : 0.5f;
+    // Auto line spacing (0 = 1.5x default)
+    float spacing = (lineSpacing > 0) ? lineSpacing : 1.5f;
     
     // Set up Skia canvas and clear background
     SkImageInfo imageInfo = SkImageInfo::Make(
@@ -1429,7 +1429,7 @@ int quran_renderer_draw_wrapped_text(
         maxLineWidth = buffer->width * 0.9f;  // 90% of buffer as fallback
     }
     
-    float spacing = (lineSpacing > 0) ? lineSpacing : 0.5f;
+    float spacing = (lineSpacing > 0) ? lineSpacing : 1.5f;
     
     // Set up Skia canvas and clear background
     SkImageInfo imageInfo = SkImageInfo::Make(
