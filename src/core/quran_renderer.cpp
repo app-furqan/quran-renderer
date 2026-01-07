@@ -1144,7 +1144,10 @@ int quran_renderer_draw_text(
         }
         
         canvas->translate(-glyph_pos[i].x_advance, 0);
-        canvas->translate(glyph_pos[i].x_offset, -glyph_pos[i].y_offset);
+        
+        // Apply glyph offset for proper vowel mark positioning (hamza, harakat, etc.)
+        // Must match drawLine(): use y_offset directly (canvas Y is already flipped by -scale)
+        canvas->translate(glyph_pos[i].x_offset, glyph_pos[i].y_offset);
         
         // Handle tajweed colors: lookup_index >= 152 indicates tajweed lookup was applied
         hb_color_t glyphColor = hbTextColor;
