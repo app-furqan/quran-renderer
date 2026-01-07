@@ -185,7 +185,7 @@ struct QuranRendererImpl {
     
     // Measure the vertical extents of a single line of text
     // Returns the max ascent (above baseline) and descent (below baseline) in font units
-    LineExtents measureLineExtents(const std::string& text, double lineWidth, bool justify) {
+    LineExtents measureLineExtents(const std::string& text, double lineWidth, bool justify, bool measureTajweed) {
         LineExtents extents = {0, 0, 0};
         
         hb_buffer_t* buffer = hb_buffer_create();
@@ -199,8 +199,10 @@ struct QuranRendererImpl {
             hb_buffer_set_justify(buffer, lineWidth);
         }
         
-        // Shape without tajweed for measurement (faster)
-        hb_feature_t measureFeatures[1] = {{ HB_TAG('t', 'j', 'w', 'd'), 0, 0, (unsigned int)-1 }};
+        // Shape for measurement.
+        // IMPORTANT: when tajweed is enabled, glyph substitutions/marks can change extents,
+        // so measurement must match the actual shaping settings to avoid overlaps.
+        hb_feature_t measureFeatures[1] = {{ HB_TAG('t', 'j', 'w', 'd'), measureTajweed ? 1u : 0u, 0, (unsigned int)-1 }};
         hb_shape(font, buffer, measureFeatures, 1);
         
         unsigned int count;
@@ -233,14 +235,21 @@ struct QuranRendererImpl {
         return extents;
     }
 
-    int calculateMaxLineTotalHeightUnits(int pageIndex, double pageWidth) {
+    struct PageExtents {
+        int maxAscent;
+        int maxDescent;
+        int requiredLineHeight; // maxAscent + maxDescent (worst-case across different lines)
+    };
+
+    PageExtents calculatePageExtentsUnits(int pageIndex, double pageWidth) {
         if (pageIndex < 0 || pageIndex >= (int)pages.size()) {
-            return 0;
+            return {0, 0, 0};
         }
 
         auto& pageText = pages[pageIndex];
 
-        int maxTotalHeight = 0;
+        int maxAscent = 0;
+        int maxDescent = 0;
         for (size_t lineIndex = 0; lineIndex < pageText.size(); lineIndex++) {
             auto& linetext = pageText[lineIndex];
 
@@ -251,13 +260,16 @@ struct QuranRendererImpl {
             }
 
             bool shouldJustify = (linetext.just_type == JustType::just);
-            LineExtents extents = measureLineExtents(linetext.text, lineWidth, shouldJustify);
-            if (extents.totalHeight > maxTotalHeight) {
-                maxTotalHeight = extents.totalHeight;
-            }
+            bool measureTajweed = tajweed && (linetext.line_type != LineType::Sura);
+            LineExtents extents = measureLineExtents(linetext.text, lineWidth, shouldJustify, measureTajweed);
+
+            // NOTE: max ascent and max descent can occur on different lines.
+            // For safe inter-line spacing we need inter_line >= maxAscent + maxDescent.
+            if (extents.maxAscent > maxAscent) maxAscent = extents.maxAscent;
+            if (extents.maxDescent > maxDescent) maxDescent = extents.maxDescent;
         }
 
-        return maxTotalHeight;
+        return {maxAscent, maxDescent, maxAscent + maxDescent};
     }
     
     // Calculate the optimal line height for a page to avoid overlaps
@@ -294,7 +306,7 @@ struct QuranRendererImpl {
             }
             
             bool shouldJustify = (linetext.just_type == JustType::just);
-            LineExtents extents = measureLineExtents(linetext.text, lineWidth, shouldJustify);
+            LineExtents extents = measureLineExtents(linetext.text, lineWidth, shouldJustify, false);
             
             if (extents.totalHeight > maxTotalHeight) {
                 maxTotalHeight = extents.totalHeight;
@@ -713,22 +725,22 @@ struct QuranRendererImpl {
         }
 
         // Height-based: ensure max glyph height fits inside one of 15 line slots
-        int maxTotalHeightUnits = calculateMaxLineTotalHeightUnits(pageIndex, pageWidth);
+        PageExtents pageExtents = calculatePageExtentsUnits(pageIndex, pageWidth);
         int maxLineSlotPx = height / 15;
         int availableGlyphSlotPx = std::max(1, maxLineSlotPx - extraSpacing);
 
         // 2% safety buffer matches the previous extents->pixels conversion
         double renderScaleHeight = renderScaleWidth;
-        if (maxTotalHeightUnits > 0) {
-            renderScaleHeight = (double)availableGlyphSlotPx / ((double)maxTotalHeightUnits * 1.02);
+        if (pageExtents.requiredLineHeight > 0) {
+            renderScaleHeight = (double)availableGlyphSlotPx / ((double)pageExtents.requiredLineHeight * 1.02);
         }
 
         double renderScale = std::min(renderScaleWidth, renderScaleHeight);
 
         // Compute inter-line spacing from the chosen renderScale
         int requiredGlyphHeightPx = 0;
-        if (maxTotalHeightUnits > 0) {
-            requiredGlyphHeightPx = static_cast<int>(std::ceil((double)maxTotalHeightUnits * renderScale * 1.02));
+        if (pageExtents.requiredLineHeight > 0) {
+            requiredGlyphHeightPx = static_cast<int>(std::ceil((double)pageExtents.requiredLineHeight * renderScale * 1.02));
         }
 
         // Ensure we never go below at least 1px for the glyph slot
