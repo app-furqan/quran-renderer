@@ -84,6 +84,8 @@ int main(int argc, char** argv) {
     std::string fontPath = "android/src/main/assets/fonts/digitalkhatt.otf";
     std::string outPath = "build/dark-tajweed.ppm";
     int pageIndex = 2;
+    int width = 1200;
+    int height = 1800;
 
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--font") == 0 && i + 1 < argc) {
@@ -92,8 +94,14 @@ int main(int argc, char** argv) {
             outPath = argv[++i];
         } else if (std::strcmp(argv[i], "--page") == 0 && i + 1 < argc) {
             pageIndex = std::atoi(argv[++i]);
+        } else if (std::strcmp(argv[i], "--width") == 0 && i + 1 < argc) {
+            width = std::atoi(argv[++i]);
+        } else if (std::strcmp(argv[i], "--height") == 0 && i + 1 < argc) {
+            height = std::atoi(argv[++i]);
         } else {
-            std::cerr << "Usage: " << argv[0] << " [--font <path>] [--out <path>] [--page <index>]\n";
+            std::cerr << "Usage: " << argv[0]
+                      << " [--font <path>] [--out <path>] [--page <index>]"
+                      << " [--width <px>] [--height <px>]\n";
             return 2;
         }
     }
@@ -114,8 +122,6 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    const int width = 1200;
-    const int height = 1800;
     const int stride = width * 4;
     std::vector<uint8_t> pixels(static_cast<size_t>(stride * height));
 
