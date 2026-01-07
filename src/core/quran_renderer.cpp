@@ -726,13 +726,18 @@ struct QuranRendererImpl {
 
         // Height-based: ensure max glyph height fits inside one of 15 line slots
         PageExtents pageExtents = calculatePageExtentsUnits(pageIndex, pageWidth);
-        int maxLineSlotPx = height / 15;
+        int linesPerPage = (int)pageText.size();
+        if (linesPerPage <= 0) linesPerPage = 15;
+        int maxLineSlotPx = std::max(1, height / linesPerPage);
         int availableGlyphSlotPx = std::max(1, maxLineSlotPx - extraSpacing);
 
-        // 2% safety buffer matches the previous extents->pixels conversion
+        // Conservative safety factor to avoid any pixel-level overlaps after rounding.
+        // Arabic marks can be tight; being slightly conservative is preferable to overlap.
+        const double safety = 1.06;
+
         double renderScaleHeight = renderScaleWidth;
         if (pageExtents.requiredLineHeight > 0) {
-            renderScaleHeight = (double)availableGlyphSlotPx / ((double)pageExtents.requiredLineHeight * 1.02);
+            renderScaleHeight = (double)availableGlyphSlotPx / ((double)pageExtents.requiredLineHeight * safety);
         }
 
         double renderScale = std::min(renderScaleWidth, renderScaleHeight);
@@ -740,13 +745,17 @@ struct QuranRendererImpl {
         // Compute inter-line spacing from the chosen renderScale
         int requiredGlyphHeightPx = 0;
         if (pageExtents.requiredLineHeight > 0) {
-            requiredGlyphHeightPx = static_cast<int>(std::ceil((double)pageExtents.requiredLineHeight * renderScale * 1.02));
+            // Use floor + clamp to guarantee requiredGlyphHeightPx <= availableGlyphSlotPx.
+            requiredGlyphHeightPx = static_cast<int>(std::floor((double)pageExtents.requiredLineHeight * renderScale * safety));
         }
 
         // Ensure we never go below at least 1px for the glyph slot
         requiredGlyphHeightPx = std::max(1, requiredGlyphHeightPx);
 
-        inter_line = std::min(maxLineSlotPx, requiredGlyphHeightPx + extraSpacing);
+        // Hard clamp to available space to prevent overlaps.
+        requiredGlyphHeightPx = std::min(requiredGlyphHeightPx, availableGlyphSlotPx);
+
+        inter_line = requiredGlyphHeightPx + extraSpacing;
         
         // y_start positions the first line's baseline.
         // Arabic text needs room above the baseline for marks (fatha, damma, shadda, etc.)
