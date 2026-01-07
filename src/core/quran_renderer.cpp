@@ -241,7 +241,7 @@ struct QuranRendererImpl {
         int requiredLineHeight; // maxAscent + maxDescent (worst-case across different lines)
     };
 
-    PageExtents calculatePageExtentsUnits(int pageIndex, double pageWidth) {
+    PageExtents calculatePageExtentsUnits(int pageIndex, double pageWidth, bool justify) {
         if (pageIndex < 0 || pageIndex >= (int)pages.size()) {
             return {0, 0, 0};
         }
@@ -259,7 +259,7 @@ struct QuranRendererImpl {
                 lineWidth = pageWidth * specialWidth->second;
             }
 
-            bool shouldJustify = (linetext.just_type == JustType::just);
+            bool shouldJustify = justify && (linetext.just_type == JustType::just);
             bool measureTajweed = tajweed && (linetext.line_type != LineType::Sura);
             LineExtents extents = measureLineExtents(linetext.text, lineWidth, shouldJustify, measureTajweed);
 
@@ -725,7 +725,7 @@ struct QuranRendererImpl {
         }
 
         // Height-based: ensure max glyph height fits inside one of 15 line slots
-        PageExtents pageExtents = calculatePageExtentsUnits(pageIndex, pageWidth);
+        PageExtents pageExtents = calculatePageExtentsUnits(pageIndex, pageWidth, justify);
         int linesPerPage = (int)pageText.size();
         if (linesPerPage <= 0) linesPerPage = 15;
         int maxLineSlotPx = std::max(1, height / linesPerPage);
@@ -745,14 +745,16 @@ struct QuranRendererImpl {
         // Compute inter-line spacing from the chosen renderScale
         int requiredGlyphHeightPx = 0;
         if (pageExtents.requiredLineHeight > 0) {
-            // Use floor + clamp to guarantee requiredGlyphHeightPx <= availableGlyphSlotPx.
-            requiredGlyphHeightPx = static_cast<int>(std::floor((double)pageExtents.requiredLineHeight * renderScale * safety));
+            // Use ceil (with a tiny epsilon) to avoid pixel-level under-allocation.
+            // Under-allocation can show up as overlaps when rotation changes device scaling.
+            const double eps = 1e-6;
+            requiredGlyphHeightPx = static_cast<int>(std::ceil((double)pageExtents.requiredLineHeight * renderScale * safety - eps));
         }
 
         // Ensure we never go below at least 1px for the glyph slot
         requiredGlyphHeightPx = std::max(1, requiredGlyphHeightPx);
 
-        // Hard clamp to available space to prevent overlaps.
+        // Hard clamp to available space (safety net against any float rounding oddities).
         requiredGlyphHeightPx = std::min(requiredGlyphHeightPx, availableGlyphSlotPx);
 
         inter_line = requiredGlyphHeightPx + extraSpacing;
