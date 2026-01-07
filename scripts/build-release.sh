@@ -8,6 +8,9 @@
 #   - iOS simulator (arm64) [x86_64 optional]
 #   - macOS (arm64) [x86_64 optional]
 #
+# Also packages (if present):
+#   - Android (arm64-v8a, armeabi-v7a) [x86_64 optional]
+#
 # Usage:
 #   ./scripts/build-apple.sh [OPTIONS]
 #
@@ -18,7 +21,7 @@
 #   --macos-only       Build only macOS
 #   --skip-deps        Skip building dependencies
 #   --clean            Clean build directory before building
-#   --include-x86_64    Also build x86_64 (simulator + macOS) artifacts
+#   --include-x86_64    Also include x86_64 artifacts (Apple simulator + macOS; Android in release zip)
 #   --help             Show this help message
 #
 # Requirements:
@@ -715,8 +718,24 @@ main() {
     # Add Android libs if they exist
     if [[ -d "${PROJECT_DIR}/build/android" ]]; then
         log_info "Including Android libraries in release..."
+        rm -rf "$OUTPUT_DIR/android"
         mkdir -p "$OUTPUT_DIR/android"
-        cp -r "${PROJECT_DIR}/build/android/"* "$OUTPUT_DIR/android/"
+
+        # Always include device ABIs
+        if [[ -d "${PROJECT_DIR}/build/android/armeabi-v7a" ]]; then
+            cp -R "${PROJECT_DIR}/build/android/armeabi-v7a" "$OUTPUT_DIR/android/"
+        fi
+        if [[ -d "${PROJECT_DIR}/build/android/arm64-v8a" ]]; then
+            cp -R "${PROJECT_DIR}/build/android/arm64-v8a" "$OUTPUT_DIR/android/"
+        fi
+
+        # x86_64 is opt-in
+        if [[ "$INCLUDE_X86_64" == true ]] && [[ -d "${PROJECT_DIR}/build/android/x86_64" ]]; then
+            cp -R "${PROJECT_DIR}/build/android/x86_64" "$OUTPUT_DIR/android/"
+        else
+            log_info "Android x86_64 excluded (use --include-x86_64 to include)"
+        fi
+
         ZIP_CONTENTS="$ZIP_CONTENTS android"
     fi
     
