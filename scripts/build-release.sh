@@ -5,8 +5,8 @@
 # Build quran-renderer for iOS and macOS
 # Creates XCFramework containing:
 #   - iOS device (arm64)
-#   - iOS simulator (arm64, x86_64)
-#   - macOS (arm64, x86_64)
+#   - iOS simulator (arm64) [x86_64 optional]
+#   - macOS (arm64) [x86_64 optional]
 #
 # Usage:
 #   ./scripts/build-apple.sh [OPTIONS]
@@ -18,6 +18,7 @@
 #   --macos-only       Build only macOS
 #   --skip-deps        Skip building dependencies
 #   --clean            Clean build directory before building
+#   --include-x86_64    Also build x86_64 (simulator + macOS) artifacts
 #   --help             Show this help message
 #
 # Requirements:
@@ -44,6 +45,7 @@ IOS_ONLY=false
 MACOS_ONLY=false
 SKIP_DEPS=false
 CLEAN_BUILD=false
+INCLUDE_X86_64=false
 
 # Minimum deployment targets
 IOS_DEPLOYMENT_TARGET="13.0"
@@ -74,6 +76,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --clean)
             CLEAN_BUILD=true
+            shift
+            ;;
+        --include-x86_64)
+            INCLUDE_X86_64=true
             shift
             ;;
         --help)
@@ -523,17 +529,21 @@ build_all_deps() {
         
         # iOS Simulator
         build_harfbuzz_platform ios-simulator arm64
-        build_harfbuzz_platform ios-simulator x86_64
         build_skia_platform ios-simulator arm64
-        build_skia_platform ios-simulator x86_64
+        if [[ "$INCLUDE_X86_64" == true ]]; then
+            build_harfbuzz_platform ios-simulator x86_64
+            build_skia_platform ios-simulator x86_64
+        fi
     fi
     
     if [[ "$IOS_ONLY" != true ]]; then
         # macOS
         build_harfbuzz_platform macos arm64
-        build_harfbuzz_platform macos x86_64
         build_skia_platform macos arm64
-        build_skia_platform macos x86_64
+        if [[ "$INCLUDE_X86_64" == true ]]; then
+            build_harfbuzz_platform macos x86_64
+            build_skia_platform macos x86_64
+        fi
     fi
 }
 
@@ -544,17 +554,25 @@ build_all_libraries() {
         build_library_platform ios arm64
         create_fat_library ios arm64
         
-        # iOS simulator (universal)
+        # iOS simulator
         build_library_platform ios-simulator arm64
-        build_library_platform ios-simulator x86_64
-        create_fat_library ios-simulator arm64 x86_64
+        if [[ "$INCLUDE_X86_64" == true ]]; then
+            build_library_platform ios-simulator x86_64
+            create_fat_library ios-simulator arm64 x86_64
+        else
+            create_fat_library ios-simulator arm64
+        fi
     fi
     
     if [[ "$IOS_ONLY" != true ]]; then
-        # macOS (universal)
+        # macOS
         build_library_platform macos arm64
-        build_library_platform macos x86_64
-        create_fat_library macos arm64 x86_64
+        if [[ "$INCLUDE_X86_64" == true ]]; then
+            build_library_platform macos x86_64
+            create_fat_library macos arm64 x86_64
+        else
+            create_fat_library macos arm64
+        fi
     fi
     
     create_xcframework
@@ -585,31 +603,36 @@ build_macos_dylib() {
     
     ninja
     
-    # Build x86_64 dylib
-    local X64_BUILD_DIR="$OUTPUT_DIR/build-macos-dylib-x86_64"
-    mkdir -p "$X64_BUILD_DIR"
-    cd "$X64_BUILD_DIR"
-    
-    cmake "$PROJECT_DIR" \
-        -G Ninja \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DBUILD_SHARED_LIBS=ON \
-        -DHARFBUZZ_INCLUDE_DIR="$DEPS_DIR/harfbuzz/src" \
-        -DHARFBUZZ_LIBRARY_DIR="$DEPS_DIR/harfbuzz-build-macos-x86_64" \
-        -DSKIA_INCLUDE_DIR="$DEPS_DIR/skia" \
-        -DSKIA_LIBRARY_DIR="$DEPS_DIR/skia/out/macos-x86_64" \
-        -DQURAN_TEXT_DIR="$DEPS_DIR/visualmetafont/src/qurantext" \
-        -DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOS_DEPLOYMENT_TARGET \
-        -DCMAKE_OSX_ARCHITECTURES=x86_64
-    
-    ninja
-    
-    # Create universal dylib using lipo
-    log_info "Creating universal dylib..."
-    lipo -create \
-        "$ARM64_BUILD_DIR/libquranrenderer.dylib" \
-        "$X64_BUILD_DIR/libquranrenderer.dylib" \
-        -output "$OUTPUT_DIR/macos-dylib/libquranrenderer.dylib"
+    if [[ "$INCLUDE_X86_64" == true ]]; then
+        # Build x86_64 dylib
+        local X64_BUILD_DIR="$OUTPUT_DIR/build-macos-dylib-x86_64"
+        mkdir -p "$X64_BUILD_DIR"
+        cd "$X64_BUILD_DIR"
+        
+        cmake "$PROJECT_DIR" \
+            -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DHARFBUZZ_INCLUDE_DIR="$DEPS_DIR/harfbuzz/src" \
+            -DHARFBUZZ_LIBRARY_DIR="$DEPS_DIR/harfbuzz-build-macos-x86_64" \
+            -DSKIA_INCLUDE_DIR="$DEPS_DIR/skia" \
+            -DSKIA_LIBRARY_DIR="$DEPS_DIR/skia/out/macos-x86_64" \
+            -DQURAN_TEXT_DIR="$DEPS_DIR/visualmetafont/src/qurantext" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOS_DEPLOYMENT_TARGET \
+            -DCMAKE_OSX_ARCHITECTURES=x86_64
+        
+        ninja
+        
+        # Create universal dylib using lipo
+        log_info "Creating universal dylib..."
+        lipo -create \
+            "$ARM64_BUILD_DIR/libquranrenderer.dylib" \
+            "$X64_BUILD_DIR/libquranrenderer.dylib" \
+            -output "$OUTPUT_DIR/macos-dylib/libquranrenderer.dylib"
+    else
+        log_info "Creating arm64 dylib (x86_64 excluded)..."
+        cp "$ARM64_BUILD_DIR/libquranrenderer.dylib" "$OUTPUT_DIR/macos-dylib/libquranrenderer.dylib"
+    fi
     
     # Strip debug symbols for release
     log_info "Stripping debug symbols..."
