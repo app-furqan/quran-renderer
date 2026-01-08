@@ -1,33 +1,36 @@
 #!/bin/bash
 #
-# build-apple.sh
+# build-release.sh
 #
-# Build quran-renderer for iOS and macOS
+# Build quran-renderer for all platforms (iOS, macOS, Android)
 # Creates XCFramework containing:
 #   - iOS device (arm64)
 #   - iOS simulator (arm64) [x86_64 optional]
 #   - macOS (arm64) [x86_64 optional]
 #
-# Also packages (if present):
+# Also builds Android:
 #   - Android (arm64-v8a, armeabi-v7a) [x86_64 optional]
 #
 # Usage:
-#   ./scripts/build-apple.sh [OPTIONS]
+#   ./scripts/build-release.sh [OPTIONS]
 #
 # Options:
-#   --deps-dir PATH    Directory containing dependencies (default: ../quran-deps)
-#   --output-dir PATH  Output directory (default: build/apple)
-#   --ios-only         Build only iOS
-#   --macos-only       Build only macOS
-#   --skip-deps        Skip building dependencies
-#   --clean            Clean build directory before building
+#   --deps-dir PATH     Directory containing dependencies (default: ../quran-deps)
+#   --output-dir PATH   Output directory (default: build/apple)
+#   --ios-only          Build only iOS
+#   --macos-only        Build only macOS
+#   --android-only      Build only Android
+#   --skip-deps         Skip building dependencies
+#   --skip-android      Skip building Android
+#   --clean             Clean build directory before building
 #   --include-x86_64    Also include x86_64 artifacts (Apple simulator + macOS; Android in release zip)
-#   --help             Show this help message
+#   --help              Show this help message
 #
 # Requirements:
 #   - macOS with Xcode installed
 #   - Xcode Command Line Tools
 #   - CMake, Ninja, Python3
+#   - Android NDK (for Android builds)
 #
 
 set -e
@@ -46,7 +49,9 @@ DEPS_DIR="${PROJECT_DIR}/../quran-deps"
 OUTPUT_DIR="${PROJECT_DIR}/build/apple"
 IOS_ONLY=false
 MACOS_ONLY=false
+ANDROID_ONLY=false
 SKIP_DEPS=false
+SKIP_ANDROID=false
 CLEAN_BUILD=false
 INCLUDE_X86_64=false
 
@@ -67,14 +72,26 @@ while [[ $# -gt 0 ]]; do
             ;;
         --ios-only)
             IOS_ONLY=true
+            SKIP_ANDROID=true
             shift
             ;;
         --macos-only)
+            MACOS_ONLY=true
+            SKIP_ANDROID=true
+            shift
+            ;;
+        --android-only)
+            ANDROID_ONLY=true
+            IOS_ONLY=true
             MACOS_ONLY=true
             shift
             ;;
         --skip-deps)
             SKIP_DEPS=true
+            shift
+            ;;
+        --skip-android)
+            SKIP_ANDROID=true
             shift
             ;;
         --clean)
@@ -86,7 +103,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --help)
-            head -30 "$0" | tail -25
+            head -35 "$0" | tail -30
             exit 0
             ;;
         *)
@@ -101,10 +118,15 @@ log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# Check for macOS
+# Check for macOS (only required for Apple builds)
 check_platform() {
+    if [[ "$ANDROID_ONLY" == true ]]; then
+        return 0  # Android builds don't require macOS
+    fi
+    
     if [[ "$(uname)" != "Darwin" ]]; then
-        log_error "This script must be run on macOS"
+        log_error "Apple platform builds require macOS"
+        log_info "For Android-only builds, use: ./scripts/build-android-so.sh"
         exit 1
     fi
 }
@@ -520,10 +542,15 @@ create_xcframework() {
     log_success "XCFramework created: $XCFRAMEWORK_DIR"
 }
 
-# Build all dependencies
+# Build all dependencies for Apple platforms
 build_all_deps() {
     setup_visualmetafont
     download_fonts
+    
+    if [[ "$ANDROID_ONLY" == true ]]; then
+        log_info "Skipping Apple dependencies (Android-only build)"
+        return 0
+    fi
     
     if [[ "$MACOS_ONLY" != true ]]; then
         # iOS
@@ -550,8 +577,77 @@ build_all_deps() {
     fi
 }
 
-# Build all libraries
+# Build Android using the unified Skia configuration
+build_android_all() {
+    log_info "==========================================="
+    log_info "  Building Android (unified Skia config)  "
+    log_info "==========================================="
+    
+    # Check for Android NDK
+    if [[ -z "$ANDROID_NDK_HOME" ]] && [[ -z "$ANDROID_NDK" ]]; then
+        log_error "Android NDK not found"
+        log_error "Please set ANDROID_NDK_HOME or ANDROID_NDK environment variable"
+        log_info "Example: export ANDROID_NDK_HOME=\$HOME/Library/Android/sdk/ndk/25.2.9519653"
+        return 1
+    fi
+    
+    local NDK_PATH="${ANDROID_NDK_HOME:-$ANDROID_NDK}"
+    log_info "Using Android NDK: $NDK_PATH"
+    
+    # Determine ABIs to build
+    local ANDROID_ABIS=("armeabi-v7a" "arm64-v8a")
+    if [[ "$INCLUDE_X86_64" == true ]]; then
+        ANDROID_ABIS+=("x86_64")
+    fi
+    
+    log_info "Building for Android ABIs: ${ANDROID_ABIS[*]}"
+    
+    # Build using the android build script which ensures unified Skia config
+    local BUILD_ARGS=""
+    if [[ "$INCLUDE_X86_64" == true ]]; then
+        BUILD_ARGS="--abi all"
+    fi
+    
+    if [[ "$SKIP_DEPS" == true ]]; then
+        BUILD_ARGS="$BUILD_ARGS --skip-skia --skip-harfbuzz"
+    fi
+    
+    if [[ "$CLEAN_BUILD" == true ]]; then
+        BUILD_ARGS="$BUILD_ARGS --clean"
+    fi
+    
+    log_info "Executing: $SCRIPT_DIR/build-android-so.sh $BUILD_ARGS"
+    "$SCRIPT_DIR/build-android-so.sh" $BUILD_ARGS
+    
+    log_success "Android build complete"
+    
+    # Deploy libraries to jniLibs for Android app development
+    log_info "Deploying Android libraries to jniLibs..."
+    local JNILIBS_DIR="$PROJECT_DIR/android/src/main/jniLibs"
+    mkdir -p "$JNILIBS_DIR"
+    
+    for abi_dir in "$PROJECT_DIR/build/android"/*; do
+        if [[ -d "$abi_dir" ]]; then
+            local ABI=$(basename "$abi_dir")
+            local SO_FILE="$abi_dir/libquranrenderer.so"
+            if [[ -f "$SO_FILE" ]]; then
+                mkdir -p "$JNILIBS_DIR/$ABI"
+                cp "$SO_FILE" "$JNILIBS_DIR/$ABI/"
+                log_info "  Deployed: $JNILIBS_DIR/$ABI/libquranrenderer.so"
+            fi
+        fi
+    done
+    
+    log_success "Android libraries deployed to jniLibs"
+}
+
+# Build all Apple platform libraries
 build_all_libraries() {
+    if [[ "$ANDROID_ONLY" == true ]]; then
+        log_info "Skipping Apple library builds (Android-only)"
+        return 0
+    fi
+    
     if [[ "$MACOS_ONLY" != true ]]; then
         # iOS device
         build_library_platform ios arm64
@@ -657,20 +753,34 @@ build_macos_dylib() {
 # Main
 main() {
     log_info "==========================================="
-    log_info "  Quran Renderer - Apple Build Script     "
+    log_info "  Quran Renderer - Release Build Script   "
     log_info "==========================================="
+    log_info ""
+    log_info "This script builds for ALL platforms:"
+    log_info "  - iOS (arm64) + Simulator"
+    log_info "  - macOS (arm64, x86_64 opt-in)"
+    log_info "  - Android (armeabi-v7a, arm64-v8a, x86_64 opt-in)"
+    log_info ""
+    log_info "All platforms use IDENTICAL Skia configuration"
+    log_info "for consistent rendering across devices."
+    log_info ""
     
     check_platform
-    check_requirements
+    
+    if [[ "$ANDROID_ONLY" != true ]]; then
+        check_requirements
+    fi
     
     mkdir -p "$DEPS_DIR"
     mkdir -p "$OUTPUT_DIR"
     
     if [[ "$CLEAN_BUILD" == true ]]; then
         rm -rf "$OUTPUT_DIR"
+        rm -rf "$PROJECT_DIR/build/android"
         mkdir -p "$OUTPUT_DIR"
     fi
     
+    # Build Apple platforms
     if [[ "$SKIP_DEPS" != true ]]; then
         build_all_deps
     fi
@@ -678,13 +788,31 @@ main() {
     build_all_libraries
     
     # Build macOS dylib (in addition to static libraries)
-    if [[ "$IOS_ONLY" != true ]]; then
+    if [[ "$IOS_ONLY" != true ]] && [[ "$ANDROID_ONLY" != true ]]; then
         build_macos_dylib
     fi
     
     # Copy fonts
-    mkdir -p "$OUTPUT_DIR/fonts"
-    cp "$DEPS_DIR/fonts/digitalkhatt.otf" "$OUTPUT_DIR/fonts/"
+    if [[ "$ANDROID_ONLY" != true ]]; then
+        mkdir -p "$OUTPUT_DIR/fonts"
+        cp "$DEPS_DIR/fonts/digitalkhatt.otf" "$OUTPUT_DIR/fonts/" 2>/dev/null || true
+    fi
+    
+    # Build Android platforms (unless explicitly skipped)
+    if [[ "$SKIP_ANDROID" != true ]]; then
+        log_info ""
+        log_info "=========================================="
+        log_info "  Starting Android Build                 "
+        log_info "=========================================="
+        if build_android_all; then
+            log_success "Android build successful"
+        else
+            log_warn "Android build failed or skipped (NDK not found)"
+            log_info "To build Android, set ANDROID_NDK_HOME and re-run"
+        fi
+    else
+        log_info "Skipping Android build (--skip-android specified)"
+    fi
     
     log_success "==========================================="
     log_success "  Build Complete!"
@@ -692,17 +820,26 @@ main() {
     log_info ""
     log_info "Output: $OUTPUT_DIR"
     log_info ""
-    log_info "XCFramework: $OUTPUT_DIR/QuranRenderer.xcframework"
-    log_info "macOS dylib: $OUTPUT_DIR/macos-dylib/"
-    log_info ""
-    log_info "Usage in Xcode:"
-    log_info "  1. Drag QuranRenderer.xcframework to your project"
-    log_info "  2. Add to 'Frameworks, Libraries, and Embedded Content'"
-    log_info "  3. #include <quran/renderer.h>"
-    log_info ""
-    if [[ -d "$OUTPUT_DIR/QuranRenderer.xcframework" ]]; then
-        log_info "XCFramework contents:"
-        ls -la "$OUTPUT_DIR/QuranRenderer.xcframework/"
+    
+    if [[ "$ANDROID_ONLY" != true ]]; then
+        log_info "XCFramework: $OUTPUT_DIR/QuranRenderer.xcframework"
+        log_info "macOS dylib: $OUTPUT_DIR/macos-dylib/"
+        log_info ""
+        log_info "Usage in Xcode:"
+        log_info "  1. Drag QuranRenderer.xcframework to your project"
+        log_info "  2. Add to 'Frameworks, Libraries, and Embedded Content'"
+        log_info "  3. #include <quran/renderer.h>"
+        log_info ""
+        if [[ -d "$OUTPUT_DIR/QuranRenderer.xcframework" ]]; then
+            log_info "XCFramework contents:"
+            ls -la "$OUTPUT_DIR/QuranRenderer.xcframework/"
+        fi
+    fi
+    
+    if [[ -d "${PROJECT_DIR}/build/android" ]]; then
+        log_info ""
+        log_info "Android libraries: ${PROJECT_DIR}/build/android/"
+        ls -lh "${PROJECT_DIR}/build/android/"*/libquranrenderer.so 2>/dev/null || true
     fi
     
     # Create release zip (now includes macos-dylib and android if available)

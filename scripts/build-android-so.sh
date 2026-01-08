@@ -328,6 +328,21 @@ main() {
         build_android_abi "$abi"
     done
     
+    # Deploy to jniLibs automatically
+    log_info ""
+    log_info "Deploying libraries to jniLibs..."
+    local JNILIBS_DIR="$PROJECT_DIR/android/src/main/jniLibs"
+    mkdir -p "$JNILIBS_DIR"
+    
+    for lib in "$PROJECT_DIR/build/android/"*"/libquranrenderer.so"; do
+        if [[ -f "$lib" ]]; then
+            local ABI=$(basename $(dirname "$lib"))
+            mkdir -p "$JNILIBS_DIR/$ABI"
+            cp "$lib" "$JNILIBS_DIR/$ABI/"
+            log_info "  Deployed: $JNILIBS_DIR/$ABI/libquranrenderer.so"
+        fi
+    done
+    
     log_success "==========================================="
     log_success "  Android Build Complete!                "
     log_success "==========================================="
