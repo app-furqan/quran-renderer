@@ -758,7 +758,12 @@ struct QuranRendererImpl {
         // Hard clamp to available space (safety net against any float rounding oddities).
         requiredGlyphHeightPx = std::min(requiredGlyphHeightPx, availableGlyphSlotPx);
 
-        inter_line = requiredGlyphHeightPx + extraSpacing;
+        // CRITICAL: Use maxLineSlotPx for inter-line spacing, not requiredGlyphHeightPx.
+        // This ensures lines are evenly distributed across the full page height in both
+        // portrait and landscape orientations. The glyphs are scaled to fit within each
+        // line slot, but the line slots themselves should evenly divide the page height.
+        // Without this, landscape mode would pack lines together at the top of the page.
+        inter_line = maxLineSlotPx;
         
         // y_start positions the first line's baseline.
         // Arabic text needs room above the baseline for marks (fatha, damma, shadda, etc.)
