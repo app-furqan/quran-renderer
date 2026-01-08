@@ -52,8 +52,8 @@ typedef struct {
     uint32_t backgroundColor; // Background color in RGBA format (0xRRGGBBAA, default: 0xFFFFFFFF for white)
     int fontSize;       // Font size in pixels (0 = auto, calculated as (width/17)*0.9 to match mushaf-android)
     bool useForeground; // If true, use foreground color when COLR requests use_foreground
-    float lineHeightDivisor;  // Line height = height / lineHeightDivisor (0 = auto: 10.0 for regular pages, 7.5 for Fatiha)
-    float topMarginLines;     // Top margin in line-heights for Fatiha pages 1&2 (0 = auto: 3.5 for Fatiha, 0 for others)
+    float lineHeightDivisor;  // EXTRA line spacing = height / lineHeightDivisor (0 = no extra spacing)
+    float topMarginLines;     // Top margin in line-heights (0 = no margin, -1 = auto: 0 for all pages)
 } QuranRenderConfig;
 
 /**

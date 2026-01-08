@@ -701,7 +701,8 @@ struct QuranRendererImpl {
 
         // lineHeightDivisor adds EXTRA spacing on top of the optimal
         // Value > 0 means: add (height / lineHeightDivisor) extra pixels per line
-        // Default 0 = no extra spacing, just the optimal tight layout
+        // Value = 0 means: no extra spacing (tight layout)
+        // Value < 0 means: auto mode (reserved for future use)
         int extraSpacing = 0;
         if (lineHeightDivisor > 0.0f) {
             extraSpacing = static_cast<int>(height / lineHeightDivisor);
@@ -732,8 +733,12 @@ struct QuranRendererImpl {
 
         // Height-based: ensure max glyph height fits inside one of 15 line slots
         PageExtents pageExtents = calculatePageExtentsUnits(pageIndex, pageWidth, justify);
-        int linesPerPage = (int)pageText.size();
-        if (linesPerPage <= 0) linesPerPage = 15;
+        
+        // CRITICAL: Always use 15 lines for spacing calculation (standard mushaf layout)
+        // Even if a page has fewer text lines (like Al-Fatiha with 7-8 lines), we maintain
+        // consistent 15-line grid spacing to match traditional mushaf layout and avoid
+        // excessive gaps when lines are spread across the full page height.
+        const int linesPerPage = 15;
         int maxLineSlotPx = std::max(1, height / linesPerPage);
         int availableGlyphSlotPx = std::max(1, maxLineSlotPx - extraSpacing);
 
