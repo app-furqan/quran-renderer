@@ -145,35 +145,34 @@ clone_or_update() {
         fi
     fi
 }
-
 # Build Skia for a specific ABI
+# NOTE: This function is DEPRECATED - use scripts/build-android-skia.sh instead
+# That script uses the SAME configuration as iOS/macOS for consistent rendering
 build_skia_abi() {
     local cpu="$1"
     local abi="$2"
-    local out_dir="out/android-$cpu"
     
-    log_info "Building Skia for $abi (cpu=$cpu)..."
+    log_warn "build_skia_abi() is deprecated - redirecting to build-android-skia.sh"
+    log_info "This ensures consistent Skia configuration across all platforms"
     
-    if [[ "$CLEAN_BUILD" == true ]] && [[ -d "$out_dir" ]]; then
-        rm -rf "$out_dir"
-    fi
+    # Map cpu to ABI name for the new script
+    local abi_name=""
+    case $cpu in
+        arm64) abi_name="arm64-v8a" ;;
+        arm) abi_name="armeabi-v7a" ;;
+        x64) abi_name="x86_64" ;;
+        *)
+            log_error "Unknown CPU: $cpu"
+            return 1
+            ;;
+    esac
     
-    bin/gn gen "$out_dir" --args="
-        target_os=\"android\"
-        target_cpu=\"$cpu\"
-        ndk=\"$NDK_PATH\"
-        is_official_build=true
-        is_component_build=false
-        is_debug=false
-        skia_use_system_freetype2=false
-        skia_use_freetype=true
-        skia_enable_fontmgr_android=true
-        skia_use_gl=true
-    "
+    # Set environment variables and call the unified build script
+    export ANDROID_NDK_HOME="$NDK_PATH"
+    "$SCRIPT_DIR/build-android-skia.sh" "$abi_name"
     
-    ninja -C "$out_dir" skia
-    
-    log_success "Built Skia for $abi"
+    log_success "Built Skia for $abi using unified configuration"
+}
 }
 
 # Main script
@@ -302,16 +301,17 @@ main() {
     mkdir -p "$SKIA_OUT"/{arm64-v8a,armeabi-v7a,x86_64,include_root}
     
     if [[ "$SKIP_SKIA" != true ]]; then
-        # Copy static libraries
-        cp "$DEPS_DIR/skia/out/android-arm64/libskia.a" "$SKIA_OUT/arm64-v8a/"
-        cp "$DEPS_DIR/skia/out/android-arm/libskia.a" "$SKIA_OUT/armeabi-v7a/"
-        cp "$DEPS_DIR/skia/out/android-x64/libskia.a" "$SKIA_OUT/x86_64/"
+        # Copy static libraries (using new naming convention from build-android-skia.sh)
+        cp "$DEPS_DIR/skia/out/android-arm64-v8a/libskia.a" "$SKIA_OUT/arm64-v8a/"
+        cp "$DEPS_DIR/skia/out/android-armeabi-v7a/libskia.a" "$SKIA_OUT/armeabi-v7a/"
+        cp "$DEPS_DIR/skia/out/android-x86_64/libskia.a" "$SKIA_OUT/x86_64/"
         
         # Copy headers
         rm -rf "$SKIA_OUT/include_root/include"
         cp -r "$DEPS_DIR/skia/include" "$SKIA_OUT/include_root/"
         
         log_success "Skia libraries organized in $SKIA_OUT"
+        log_info "Note: Skia is built with consistent configuration (CPU-only, matches iOS/macOS)"
     fi
     
     # Generate local.properties

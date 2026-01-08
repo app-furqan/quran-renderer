@@ -661,8 +661,13 @@ struct QuranRendererImpl {
         hb_buffer_destroy(buffer);
     }
     
-    void drawPage(void* pixels, int width, int height, int stride, int pageIndex, bool justify, float fontScale = 1.0f, uint32_t backgroundColor = 0xFFFFFFFF, int fontSize = 0, bool useForeground = false, float lineHeightDivisor = 0.0f, float topMarginLines = -1.0f) {
-        SkImageInfo imageInfo = SkImageInfo::Make(width, height, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
+    void drawPage(void* pixels, int width, int height, int stride, int pageIndex, bool justify, float fontScale = 1.0f, uint32_t backgroundColor = 0xFFFFFFFF, int fontSize = 0, bool useForeground = false, float lineHeightDivisor = 0.0f, float topMarginLines = -1.0f, QuranPixelFormat format = QURAN_PIXEL_FORMAT_RGBA8888) {
+        // Respect the pixel format - critical for cross-platform compatibility
+        // Android uses RGBA8888, iOS/macOS may use BGRA8888
+        SkColorType colorType = (format == QURAN_PIXEL_FORMAT_BGRA8888)
+            ? kBGRA_8888_SkColorType
+            : kRGBA_8888_SkColorType;
+        SkImageInfo imageInfo = SkImageInfo::Make(width, height, colorType, kPremul_SkAlphaType);
         auto canvas = SkCanvas::MakeRasterDirect(imageInfo, pixels, stride);
         
         // Extract RGBA components from backgroundColor (0xRRGGBBAA format)
@@ -900,7 +905,8 @@ void quran_renderer_draw_page(
         config ? config->fontSize : 0,
         config ? config->useForeground : false,
         config ? config->lineHeightDivisor : 0.0f,
-        config ? config->topMarginLines : -1.0f
+        config ? config->topMarginLines : -1.0f,
+        buffer->format  // Pass pixel format through to renderer
     );
 }
 
@@ -1061,10 +1067,13 @@ int quran_renderer_draw_text(
         textColor = isDarkBackground(bgColor) ? 0xFFFFFFFF : 0x000000FF;
     }
     
-    // Set up Skia canvas
+    // Set up Skia canvas with correct pixel format
+    SkColorType colorType = (buffer->format == QURAN_PIXEL_FORMAT_BGRA8888)
+        ? kBGRA_8888_SkColorType
+        : kRGBA_8888_SkColorType;
     SkImageInfo imageInfo = SkImageInfo::Make(
-        buffer->width, buffer->height, 
-        kRGBA_8888_SkColorType, kPremul_SkAlphaType
+        buffer->width, buffer->height,
+        colorType, kPremul_SkAlphaType
     );
     auto canvas = SkCanvas::MakeRasterDirect(imageInfo, buffer->pixels, buffer->stride);
     

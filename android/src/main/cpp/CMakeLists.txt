@@ -90,25 +90,35 @@ add_library(quranrenderer SHARED
     ${ANDROID_FILES}
 )
 
-# Skia as imported static library
+# Skia built from source (matches iOS configuration for consistent rendering)
+# Expected location: ${SKIA_DIR}/out/android-${ANDROID_ABI}/libskia.a
+# Note: build-android-skia.sh creates out/android-armeabi-v7a, out/android-arm64-v8a, etc.
 add_library(skia STATIC IMPORTED)
-set_target_properties(skia PROPERTIES 
-    IMPORTED_LOCATION "${SKIA_DIR}/${ANDROID_ABI}/libskia.a"
+set_target_properties(skia PROPERTIES
+    IMPORTED_LOCATION "${SKIA_DIR}/out/android-${ANDROID_ABI}/libskia.a"
 )
 
 # Verify Skia static library exists
-if(NOT EXISTS "${SKIA_DIR}/${ANDROID_ABI}/libskia.a")
-    message(FATAL_ERROR "Skia static library not found at: ${SKIA_DIR}/${ANDROID_ABI}/libskia.a")
+if(NOT EXISTS "${SKIA_DIR}/out/android-${ANDROID_ABI}/libskia.a")
+    message(FATAL_ERROR
+        "Skia static library not found at: ${SKIA_DIR}/out/android-${ANDROID_ABI}/libskia.a\n"
+        "Please run: ./scripts/build-android-skia.sh ${ANDROID_ABI} to build Skia from source.\n"
+        "This ensures consistent rendering with iOS/macOS."
+    )
 endif()
 
-# Include paths: include_root for Skia internal headers, include/core for direct SkXxx.h includes
-target_include_directories(skia INTERFACE 
-    ${SKIA_DIR}/include_root
-    ${SKIA_DIR}/include_root/include/core
-    ${SKIA_DIR}/include_root/include/config
+# Include paths for Skia headers
+target_include_directories(skia INTERFACE
+    ${SKIA_DIR}
+    ${SKIA_DIR}/include/core
+    ${SKIA_DIR}/include/config
+    ${SKIA_DIR}/include/private
+    ${SKIA_DIR}/include/private/base
 )
 
-message(STATUS "Android ${ANDROID_ABI}: Linking Skia statically from ${SKIA_DIR}/${ANDROID_ABI}/libskia.a")
+message(STATUS "Android ${ANDROID_ABI}: Using Skia built from source")
+message(STATUS "  Skia library: ${SKIA_DIR}/out/android-${ANDROID_ABI}/libskia.a")
+message(STATUS "  This matches iOS configuration for consistent rendering")
 
 # Compiler definitions
 target_compile_definitions(quranrenderer PUBLIC 
