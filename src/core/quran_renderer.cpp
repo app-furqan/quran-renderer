@@ -467,7 +467,6 @@ struct QuranRendererImpl {
         // Restore canvas state
         canvas->restore();
     }
-    }
     
     void parseQuranText() {
         const char* bism1 = "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ";
