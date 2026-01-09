@@ -742,8 +742,7 @@ struct QuranRendererImpl {
                 canvas->translate(-glyph_pos[i].x_advance, 0);
             }
             
-            // Apply glyph offset for proper vowel mark positioning (hamza, harakat, etc.)
-            // Match mushaf-android: use y_offset directly without negation
+            // Apply glyph offset BEFORE painting (mushaf-android approach)
             canvas->translate(glyph_pos[i].x_offset, glyph_pos[i].y_offset);
             
             // Tajweed color handling:
@@ -776,7 +775,8 @@ struct QuranRendererImpl {
             context->foreground = color;
             hb_font_paint_glyph(font, glyph_index, paint_funcs, context, 0, color);
             
-            // Reverse the offset translation (negate both x and y)
+            // Undo glyph offset AFTER painting (mushaf-android approach)
+            // This ensures offsets don't accumulate incorrectly
             canvas->translate(-glyph_pos[i].x_offset, -glyph_pos[i].y_offset);
             
             if (extend) {
@@ -1273,8 +1273,7 @@ int quran_renderer_draw_text(
         
         canvas->translate(-glyph_pos[i].x_advance, 0);
         
-        // Apply glyph offset for proper vowel mark positioning (hamza, harakat, etc.)
-        // Must match drawLine(): use y_offset directly (canvas Y is already flipped by -scale)
+        // Apply glyph offset BEFORE painting (mushaf-android approach)
         canvas->translate(glyph_pos[i].x_offset, glyph_pos[i].y_offset);
         
         // Handle tajweed colors: lookup_index >= tajweedcolorindex indicates tajweed lookup was applied
@@ -1292,6 +1291,7 @@ int quran_renderer_draw_text(
         context.foreground = glyphColor;
         hb_font_paint_glyph(renderer->font, glyph_index, renderer->paint_funcs, &context, 0, glyphColor);
         
+        // Undo glyph offset AFTER painting (mushaf-android approach)
         canvas->translate(-glyph_pos[i].x_offset, -glyph_pos[i].y_offset);
         
         // Reset variable font coords
