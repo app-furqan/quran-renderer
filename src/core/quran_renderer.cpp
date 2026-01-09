@@ -468,6 +468,150 @@ struct QuranRendererImpl {
         canvas->restore();
     }
     
+    // Draw a decorative surah name frame
+    // Approximation of ayaframe.svg from DigitalKhatt
+    // The original SVG has intricate wave decorations at both ends
+    void drawSurahFrame(SkCanvas* canvas, float x, float y, float width, float height, uint32_t backgroundColor) {
+        // Determine if dark mode based on background luminance
+        uint8_t bg_r = (backgroundColor >> 24) & 0xFF;
+        uint8_t bg_g = (backgroundColor >> 16) & 0xFF;
+        uint8_t bg_b = (backgroundColor >> 8) & 0xFF;
+        float luminance = (0.299f * bg_r + 0.587f * bg_g + 0.114f * bg_b) / 255.0f;
+        bool isDarkMode = luminance < 0.5f;
+        
+        // Colors from the original SVG
+        // Main fill: #1c7897 (teal/blue)
+        // Inner fill: #ffffff (white)
+        // Stroke: #000000 (black, thin)
+        SkColor outerColor = isDarkMode ? SkColorSetRGB(0x43, 0xB4, 0xE5) : SkColorSetRGB(0x1C, 0x78, 0x97);
+        SkColor innerColor = isDarkMode ? SkColorSetARGB(255, 0x1A, 0x1A, 0x1A) : SK_ColorWHITE;
+        SkColor strokeColor = isDarkMode ? SkColorSetRGB(0x43, 0xB4, 0xE5) : SK_ColorBLACK;
+        
+        // The SVG viewBox is 84.74 x 10.67, so aspect ratio is about 7.94:1
+        // Scale factors for the ornate ends
+        float endWidth = height * 1.2f;  // Width of ornate section at each end
+        float centerStart = x + endWidth;
+        float centerEnd = x + width - endWidth;
+        float centerWidth = centerEnd - centerStart;
+        
+        // Outer fill paint
+        SkPaint outerPaint;
+        outerPaint.setAntiAlias(true);
+        outerPaint.setStyle(SkPaint::kFill_Style);
+        outerPaint.setColor(outerColor);
+        
+        // Inner fill paint (white background for the text)
+        SkPaint innerPaint;
+        innerPaint.setAntiAlias(true);
+        innerPaint.setStyle(SkPaint::kFill_Style);
+        innerPaint.setColor(innerColor);
+        
+        // Stroke paint
+        SkPaint strokePaint;
+        strokePaint.setAntiAlias(true);
+        strokePaint.setStyle(SkPaint::kStroke_Style);
+        strokePaint.setStrokeWidth(height * 0.01f);
+        strokePaint.setColor(strokeColor);
+        
+        // Build the outer frame shape with wave decorations
+        SkPathBuilder outer;
+        
+        // The frame shape: rectangular center with ornate wave ends
+        // Start at top-left of center section
+        float cy = y + height * 0.5f;  // Center Y
+        float topY = y + height * 0.1f;
+        float bottomY = y + height * 0.9f;
+        float waveHeight = height * 0.35f;
+        
+        // Right end ornate waves (more elaborate)
+        float rx = x + width;  // Right edge
+        outer.moveTo(centerEnd, topY);
+        
+        // Wave pattern going right - multiple curves creating ornate design
+        outer.cubicTo(centerEnd + endWidth * 0.2f, topY,
+                      centerEnd + endWidth * 0.3f, y,
+                      centerEnd + endWidth * 0.5f, y);
+        outer.cubicTo(centerEnd + endWidth * 0.7f, y,
+                      centerEnd + endWidth * 0.8f, cy - waveHeight,
+                      rx - endWidth * 0.3f, cy - waveHeight * 0.5f);
+        outer.cubicTo(rx - endWidth * 0.1f, cy - waveHeight * 0.3f,
+                      rx, cy - waveHeight * 0.2f,
+                      rx, cy);
+        outer.cubicTo(rx, cy + waveHeight * 0.2f,
+                      rx - endWidth * 0.1f, cy + waveHeight * 0.3f,
+                      rx - endWidth * 0.3f, cy + waveHeight * 0.5f);
+        outer.cubicTo(centerEnd + endWidth * 0.8f, cy + waveHeight,
+                      centerEnd + endWidth * 0.7f, y + height,
+                      centerEnd + endWidth * 0.5f, y + height);
+        outer.cubicTo(centerEnd + endWidth * 0.3f, y + height,
+                      centerEnd + endWidth * 0.2f, bottomY,
+                      centerEnd, bottomY);
+        
+        // Bottom edge (straight)
+        outer.lineTo(centerStart, bottomY);
+        
+        // Left end ornate waves (mirror of right)
+        float lx = x;  // Left edge
+        outer.cubicTo(centerStart - endWidth * 0.2f, bottomY,
+                      centerStart - endWidth * 0.3f, y + height,
+                      centerStart - endWidth * 0.5f, y + height);
+        outer.cubicTo(centerStart - endWidth * 0.7f, y + height,
+                      centerStart - endWidth * 0.8f, cy + waveHeight,
+                      lx + endWidth * 0.3f, cy + waveHeight * 0.5f);
+        outer.cubicTo(lx + endWidth * 0.1f, cy + waveHeight * 0.3f,
+                      lx, cy + waveHeight * 0.2f,
+                      lx, cy);
+        outer.cubicTo(lx, cy - waveHeight * 0.2f,
+                      lx + endWidth * 0.1f, cy - waveHeight * 0.3f,
+                      lx + endWidth * 0.3f, cy - waveHeight * 0.5f);
+        outer.cubicTo(centerStart - endWidth * 0.8f, cy - waveHeight,
+                      centerStart - endWidth * 0.7f, y,
+                      centerStart - endWidth * 0.5f, y);
+        outer.cubicTo(centerStart - endWidth * 0.3f, y,
+                      centerStart - endWidth * 0.2f, topY,
+                      centerStart, topY);
+        
+        // Top edge back to start
+        outer.close();
+        
+        // Draw outer fill
+        canvas->drawPath(outer.detach(), outerPaint);
+        
+        // Build inner white area (slightly inset)
+        float inset = height * 0.08f;
+        SkPathBuilder inner;
+        float innerTopY = topY + inset;
+        float innerBottomY = bottomY - inset;
+        float innerCenterStart = centerStart + inset * 0.5f;
+        float innerCenterEnd = centerEnd - inset * 0.5f;
+        float innerEndWidth = endWidth - inset;
+        float innerWaveHeight = waveHeight * 0.8f;
+        
+        inner.moveTo(innerCenterEnd, innerTopY);
+        
+        // Simplified inner curves (less elaborate)
+        inner.cubicTo(innerCenterEnd + innerEndWidth * 0.3f, innerTopY,
+                      innerCenterEnd + innerEndWidth * 0.5f, y + inset,
+                      innerCenterEnd + innerEndWidth * 0.6f, cy);
+        inner.cubicTo(innerCenterEnd + innerEndWidth * 0.5f, y + height - inset,
+                      innerCenterEnd + innerEndWidth * 0.3f, innerBottomY,
+                      innerCenterEnd, innerBottomY);
+        
+        inner.lineTo(innerCenterStart, innerBottomY);
+        
+        inner.cubicTo(innerCenterStart - innerEndWidth * 0.3f, innerBottomY,
+                      innerCenterStart - innerEndWidth * 0.5f, y + height - inset,
+                      innerCenterStart - innerEndWidth * 0.6f, cy);
+        inner.cubicTo(innerCenterStart - innerEndWidth * 0.5f, y + inset,
+                      innerCenterStart - innerEndWidth * 0.3f, innerTopY,
+                      innerCenterStart, innerTopY);
+        
+        inner.close();
+        
+        // Draw inner fill
+        canvas->drawPath(inner.detach(), innerPaint);
+    }
+    
     void parseQuranText() {
         const char* bism1 = "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ";
         const char* bism2 = "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ";
