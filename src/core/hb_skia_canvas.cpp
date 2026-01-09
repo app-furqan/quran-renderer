@@ -127,7 +127,8 @@ hb_skia_push_clip_glyph (hb_paint_funcs_t *pfuncs HB_UNUSED,
 
     SkPathBuilder pathBuilder;
     hb_font_draw_glyph (font, glyph, hb_skia_draw_get_funcs (), &pathBuilder);
-    c->path = pathBuilder.detach();
+    SkPath newPath = pathBuilder.detach();
+    c->path = newPath;
 }
 
 // Check if a color is near-white (within tolerance)
