@@ -693,88 +693,30 @@ struct QuranRendererImpl {
         
         // Determine if this is a Fatiha page (special layout)
         bool isFatihaPage = (pageIndex == 0 || pageIndex == 1);
-        
-        // Font size and line height calculation
-        int inter_line;
-        // Increased padding from width/42.5 to width/25 for better margins
-        int x_padding = width / 25;
-
-        // lineHeightDivisor adds EXTRA spacing on top of the optimal
-        // Value > 0 means: add (height / lineHeightDivisor) extra pixels per line
-        // Value = 0 means: no extra spacing (tight layout)
-        // Value < 0 means: auto mode (reserved for future use)
-        int extraSpacing = 0;
-        if (lineHeightDivisor > 0.0f) {
-            extraSpacing = static_cast<int>(height / lineHeightDivisor);
-        }
-
-        // --- Render scale (pixels per font unit) ---
-        // Previous logic derived renderScale as: (char_height/upem) * ((width-2*pad)/(char_height/upem)/reference)
-        // which cancels char_height entirely. That makes fontScale ineffective and can cause overlaps in landscape
-        // because glyphs scale up with width while line slots shrink with height.
-        //
-        // New logic:
-        // - Compute a width-based render scale (fills available width)
-        // - Compute a height-based render scale (ensures 15 lines fit without overlap)
-        // - Use the smaller one
-        const double referencePageWidth = 17000.0;
-        const double pageWidth = referencePageWidth;
-
-        float clampedScale = std::max(0.5f, std::min(2.0f, fontScale));
-
-        // Width-based: fill the page width (scaled by fontScale)
-        double renderScaleWidth = ((width - 2.0 * x_padding) / referencePageWidth) * clampedScale;
-
-        // If explicit font size is provided, treat it as a target glyph size in pixels
-        // by mapping it to font units.
-        if (fontSize > 0 && upem > 0) {
-            renderScaleWidth = (double)fontSize / (double)upem;
-        }
-
-        // Height-based: ensure max glyph height fits inside one of 15 line slots
-        PageExtents pageExtents = calculatePageExtentsUnits(pageIndex, pageWidth, justify);
-        
-        // CRITICAL: Always use 15 lines for spacing calculation (standard mushaf layout)
-        // Even if a page has fewer text lines (like Al-Fatiha with 7-8 lines), we maintain
-        // consistent 15-line grid spacing to match traditional mushaf layout and avoid
-        // excessive gaps when lines are spread across the full page height.
-        const int linesPerPage = 15;
-        int maxLineSlotPx = std::max(1, height / linesPerPage);
-        int availableGlyphSlotPx = std::max(1, maxLineSlotPx - extraSpacing);
-
-        // Conservative safety factor to avoid any pixel-level overlaps after rounding.
-        // Arabic marks can be tight; being slightly conservative is preferable to overlap.
-        const double safety = 1.06;
-
-        double renderScaleHeight = renderScaleWidth;
-        if (pageExtents.requiredLineHeight > 0) {
-            renderScaleHeight = (double)availableGlyphSlotPx / ((double)pageExtents.requiredLineHeight * safety);
-        }
-
-        double renderScale = std::min(renderScaleWidth, renderScaleHeight);
-
-        // Compute inter-line spacing from the chosen renderScale
-        int requiredGlyphHeightPx = 0;
-        if (pageExtents.requiredLineHeight > 0) {
-            // Use ceil (with a tiny epsilon) to avoid pixel-level under-allocation.
-            // Under-allocation can show up as overlaps when rotation changes device scaling.
-            const double eps = 1e-6;
-            requiredGlyphHeightPx = static_cast<int>(std::ceil((double)pageExtents.requiredLineHeight * renderScale * safety - eps));
-        }
-
-        // Ensure we never go below at least 1px for the glyph slot
-        requiredGlyphHeightPx = std::max(1, requiredGlyphHeightPx);
-
-        // Hard clamp to available space (safety net against any float rounding oddities).
-        requiredGlyphHeightPx = std::min(requiredGlyphHeightPx, availableGlyphSlotPx);
-
-        // CRITICAL: Use maxLineSlotPx for inter-line spacing, not requiredGlyphHeightPx.
-        // This ensures lines are evenly distributed across the full page height in both
-        // portrait and landscape orientations. The glyphs are scaled to fit within each
-        // line slot, but the line slots themselves should evenly divide the page height.
-        // Without this, landscape mode would pack lines together at the top of the page.
-        inter_line = maxLineSlotPx;
-        
+                // Font size and line height calculation - match mushafexactly
+                // mushaf-android: char_height = (width / 17) * 0.9
+                //                inter_line = height / 15
+                //                y_start = inter_line * 0.72
+                //                x_padding = width / 42.5
+                int char_height = static_cast<int>((width / 17.0) * 0.9);
+                int inter_line = height / 15;  // Simple: evenly distribute 15 lines across page height
+                int x_padding = width / 42.5;  // Match mushafpadding
+                
+                // Apply fontScale to char_height if specified
+                float clampedScale = std::max(0.5f, std::min(2.0f, fontScale));
+                char_height = static_cast<int>(char_height * clampedScale);
+                
+                // Override with explicit fontSize if provided
+                if (fontSize > 0) {
+                    char_height = fontSize;
+                }
+                
+                // Calculate render scale from char_height
+                double renderScale = (double)char_height / upem;
+                
+                // Calculate page width in font units (mushafapproach)
+                const double referencePageWidth = 17000.0;
+                const double pageWidth = referencePageWidth;
         // y_start positions the first line's baseline.
         // Arabic text needs room above the baseline for marks (fatha, damma, shadda, etc.)
         // Following mushaf-android: baseline at ~72% down from line slot top
@@ -788,7 +730,7 @@ struct QuranRendererImpl {
         // the target line width in font units. If this varies with font size, the glyph
         // offsets (x_offset, y_offset) change, causing vowel marks to shift.
         // 
-        // mushaf-android uses a fixed pageWidth of 17000 units. We calculate the actual
+        // mushafuses a fixed pageWidth of 17000 units. We calculate the actual
         // rendering area based on screen dimensions and derive a consistent reference.
         // The key is that the RATIO of lineWidth to pageWidth stays consistent.
         // Use reference page width for HarfBuzz justification (consistent glyph positioning)
@@ -1323,19 +1265,22 @@ int quran_renderer_draw_multiline_text(
         // For auto text color, resolve it here based on the actual background
         lineConfig.textColor = isDarkBackground(bgColor) ? 0xFFFFFFFF : 0x000000FF;
     }
-
-    // Line height needs to accommodate Arabic marks above and below
-    // Reduced from 1.5x to 1.2x for tighter spacing
-    int baseLineHeight = static_cast<int>(fontSize * 1.2f);
-    int lineHeight = static_cast<int>(baseLineHeight * spacing);
-    
-    // Calculate top margin
-    float marginLeft = config ? config->marginLeft : -1.0f;
-    if (marginLeft < 0) {
-        marginLeft = std::max(10.0f, buffer->width * 0.05f);
-    }
-    int yOffset = static_cast<int>(marginLeft);  // Use same margin for top
-    
+        // Line height - match mushafapproach: simple multiplier on font size
+        int lineHeight = static_cast<int>(fontSize * spacing);
+        
+        // Calculate margins - match mushaf rendering (width / 42.5)
+        float marginLeft = config ? config->marginLeft : -1.0f;
+        float marginRight = config ? config->marginRight : -1.0f;
+        
+        // Auto margin: match mushaf rendering (width / 42.5)
+        if (marginLeft < 0) {
+            marginLeft = std::max(10.0f, static_cast<float>(buffer->width) / 42.5f);
+        }
+        if (marginRight < 0) {
+            marginRight = std::max(10.0f, static_cast<float>(buffer->width) / 42.5f);
+        }
+        
+        int yOffset = static_cast<int>(marginLeft);  // Use left margin for top
     for (size_t i = 0; i < lines.size(); i++) {
         if (lines[i].empty()) {
             yOffset += lineHeight;

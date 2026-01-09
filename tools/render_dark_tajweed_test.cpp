@@ -162,7 +162,7 @@ int main(int argc, char** argv) {
         std::cout << "Tajweed-like colored pixels: " << stats.tajweedLike << " (" << tajPct << "%)\n";
 
         // On dark backgrounds, some black is expected from ayah number digits 
-        // which stay black per mushaf-android design. Allow up to 1% for these.
+        // which stay black per mushafdesign. Allow up to 1% for these.
         if (bgR < 64 && bgG < 64 && bgB < 64 && blackPct > 1.0) {
             std::cerr << "Too many pure-black pixels on dark background; likely lingering black text.\n";
             return 1;
