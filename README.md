@@ -297,7 +297,7 @@ Options:
 **Requirements:**
 - macOS with Xcode and Command Line Tools
 - CMake 3.22+, Ninja, Python 3
-- Android SDK with NDK 28.0.12674087 (for Android builds)
+- Android SDK with NDK 28.2.13676358 (for Android builds)
 
 **Xcode Integration:**
 1. Drag `QuranRenderer.xcframework` into your Xcode project
