@@ -90,13 +90,17 @@ inline hb_color_t getTextColorForBackground(uint32_t backgroundColor) {
 struct QuranRendererImpl {
     hb_face_t* face = nullptr;
     hb_font_t* font = nullptr;
+    hb_face_t* surah_header_face = nullptr;
+    hb_font_t* surah_header_font = nullptr;
     hb_draw_funcs_t* draw_funcs = nullptr;
     hb_paint_funcs_t* paint_funcs = nullptr;
     hb_language_t ar_language;
     unsigned int upem = 0;
+    unsigned int surah_header_upem = 0;
     
     std::vector<std::vector<QuranLine>> pages;
     std::unordered_map<int, float> lineWidths;
+    std::unordered_map<int, int> surahNumbers; // Maps page*15+line to surah number
     
     bool tajweed = true;
     unsigned int tajweedcolorindex = 0xFFFF;
@@ -105,6 +109,8 @@ struct QuranRendererImpl {
     
     // Font data kept alive
     const uint8_t* fontDataPtr = nullptr;
+    const uint8_t* surahHeaderFontData = nullptr;
+    size_t surahHeaderFontSize = 0;
     
     QuranRendererImpl() {
         // Initialize special line widths for certain pages
@@ -130,6 +136,8 @@ struct QuranRendererImpl {
     ~QuranRendererImpl() {
         if (font) hb_font_destroy(font);
         if (face) hb_face_destroy(face);
+        if (surah_header_font) hb_font_destroy(surah_header_font);
+        if (surah_header_face) hb_face_destroy(surah_header_face);
         if (draw_funcs) hb_draw_funcs_destroy(draw_funcs);
         if (paint_funcs) hb_paint_funcs_destroy(paint_funcs);
     }
@@ -173,7 +181,79 @@ struct QuranRendererImpl {
         }
         // Otherwise keep default 0xFFFF (disabled, will fall back to base_codepoint check)
         
+        // Load surah header font
+        loadSurahHeaderFont();
+        
         return true;
+    }
+    
+    bool loadSurahHeaderFont() {
+        // Load the QCF_SurahHeader_COLOR-Regular.ttf font from assets
+        #ifdef __ANDROID__
+        // On Android, this will be loaded from assets by the JNI layer
+        // For now, we'll skip loading on Android and handle it separately
+        return true;
+        #else
+        // On desktop/iOS, load from assets directory
+        FILE* fontFile = fopen("assets/QCF_SurahHeader_COLOR-Regular.ttf", "rb");
+        if (!fontFile) {
+            // Font file not found - this is not critical, we can fall back to text
+            return false;
+        }
+        
+        fseek(fontFile, 0, SEEK_END);
+        surahHeaderFontSize = ftell(fontFile);
+        fseek(fontFile, 0, SEEK_SET);
+        
+        uint8_t* buffer = new uint8_t[surahHeaderFontSize];
+        size_t read = fread(buffer, 1, surahHeaderFontSize, fontFile);
+        fclose(fontFile);
+        
+        if (read != surahHeaderFontSize) {
+            delete[] buffer;
+            return false;
+        }
+        
+        surahHeaderFontData = buffer;
+        
+        auto blob = hb_blob_create_or_fail(
+            reinterpret_cast<const char*>(surahHeaderFontData),
+            surahHeaderFontSize,
+            HB_MEMORY_MODE_READONLY,
+            nullptr, nullptr
+        );
+        if (!blob) {
+            delete[] surahHeaderFontData;
+            surahHeaderFontData = nullptr;
+            return false;
+        }
+        
+        surah_header_face = hb_face_create(blob, 0);
+        hb_blob_destroy(blob);
+        
+        if (!surah_header_face) {
+            delete[] surahHeaderFontData;
+            surahHeaderFontData = nullptr;
+            return false;
+        }
+        
+        surah_header_upem = hb_face_get_upem(surah_header_face);
+        surah_header_font = hb_font_create(surah_header_face);
+        hb_font_set_scale(surah_header_font, surah_header_upem, surah_header_upem);
+        
+        return true;
+        #endif
+    }
+    
+    // Map surah number (1-114) to ligature codepoint
+    int getSurahLigatureCodepoint(int surahNumber) {
+        // Based on the ligature table provided:
+        // surah-1 = U+FC45 (ﱅ), surah-2 = U+FC46 (ﱆ), etc.
+        // The Unicode codepoints are sequential starting from U+FC45
+        if (surahNumber < 1 || surahNumber > 114) {
+            return 0;
+        }
+        return 0xFC45 + (surahNumber - 1);
     }
     
     // Structure to hold line extent measurements
@@ -329,149 +409,64 @@ struct QuranRendererImpl {
         // Use the smaller of the required height and max that fits
         return std::min(requiredLineHeight, maxLineHeight);
     }
-    
-    // Draw a decorative surah name frame
-    // Approximation of ayaframe.svg from DigitalKhatt
-    // The original SVG has intricate wave decorations at both ends
-    void drawSurahFrame(SkCanvas* canvas, float x, float y, float width, float height, uint32_t backgroundColor) {
-        // Determine if dark mode based on background luminance
-        uint8_t bg_r = (backgroundColor >> 24) & 0xFF;
-        uint8_t bg_g = (backgroundColor >> 16) & 0xFF;
-        uint8_t bg_b = (backgroundColor >> 8) & 0xFF;
-        float luminance = (0.299f * bg_r + 0.587f * bg_g + 0.114f * bg_b) / 255.0f;
-        bool isDarkMode = luminance < 0.5f;
+    // Draw surah header using font ligature
+    void drawSurahHeader(SkCanvas* canvas, skia_context_t* context, int surahNumber,
+                        float x, float y, float width, float height, uint32_t backgroundColor) {
+        // If surah header font is not loaded, skip rendering
+        if (!surah_header_font) {
+            return;
+        }
         
-        // Colors from the original SVG
-        // Main fill: #1c7897 (teal/blue)
-        // Inner fill: #ffffff (white)
-        // Stroke: #000000 (black, thin)
-        SkColor outerColor = isDarkMode ? SkColorSetRGB(0x43, 0xB4, 0xE5) : SkColorSetRGB(0x1C, 0x78, 0x97);
-        SkColor innerColor = isDarkMode ? SkColorSetARGB(255, 0x1A, 0x1A, 0x1A) : SK_ColorWHITE;
-        SkColor strokeColor = isDarkMode ? SkColorSetRGB(0x43, 0xB4, 0xE5) : SK_ColorBLACK;
+        // Get the ligature codepoint for this surah
+        int codepoint = getSurahLigatureCodepoint(surahNumber);
+        if (codepoint == 0) {
+            return;
+        }
         
-        // The SVG viewBox is 84.74 x 10.67, so aspect ratio is about 7.94:1
-        // Scale factors for the ornate ends
-        float endWidth = height * 1.2f;  // Width of ornate section at each end
-        float centerStart = x + endWidth;
-        float centerEnd = x + width - endWidth;
-        float centerWidth = centerEnd - centerStart;
+        // Get the glyph index for the ligature
+        hb_codepoint_t glyph;
+        if (!hb_font_get_nominal_glyph(surah_header_font, codepoint, &glyph)) {
+            return;
+        }
         
-        // Outer fill paint
-        SkPaint outerPaint;
-        outerPaint.setAntiAlias(true);
-        outerPaint.setStyle(SkPaint::kFill_Style);
-        outerPaint.setColor(outerColor);
+        // Get glyph extents to calculate scaling
+        hb_glyph_extents_t extents;
+        if (!hb_font_get_glyph_extents(surah_header_font, glyph, &extents)) {
+            return;
+        }
         
-        // Inner fill paint (white background for the text)
-        SkPaint innerPaint;
-        innerPaint.setAntiAlias(true);
-        innerPaint.setStyle(SkPaint::kFill_Style);
-        innerPaint.setColor(innerColor);
+        // Calculate scale to fit the header within the specified dimensions
+        // The glyph should fit within the available width and height
+        double glyph_width = extents.x_bearing + extents.width;
+        double glyph_height = extents.y_bearing - extents.height; // height is negative
         
-        // Stroke paint
-        SkPaint strokePaint;
-        strokePaint.setAntiAlias(true);
-        strokePaint.setStyle(SkPaint::kStroke_Style);
-        strokePaint.setStrokeWidth(height * 0.01f);
-        strokePaint.setColor(strokeColor);
+        double scale_x = width / glyph_width;
+        double scale_y = height / glyph_height;
+        double scale = std::min(scale_x, scale_y) * 0.9; // Use 90% to add some padding
         
-        // Build the outer frame shape with wave decorations
-        SkPathBuilder outer;
+        // Calculate center position
+        float centerX = x + width / 2.0f;
+        float centerY = y + height / 2.0f;
         
-        // The frame shape: rectangular center with ornate wave ends
-        // Start at top-left of center section
-        float cy = y + height * 0.5f;  // Center Y
-        float topY = y + height * 0.1f;
-        float bottomY = y + height * 0.9f;
-        float waveHeight = height * 0.35f;
+        // Save canvas state
+        canvas->save();
         
-        // Right end ornate waves (more elaborate)
-        float rx = x + width;  // Right edge
-        outer.moveTo(centerEnd, topY);
+        // Position at center
+        canvas->translate(centerX, centerY);
         
-        // Wave pattern going right - multiple curves creating ornate design
-        outer.cubicTo(centerEnd + endWidth * 0.2f, topY,
-                      centerEnd + endWidth * 0.3f, y,
-                      centerEnd + endWidth * 0.5f, y);
-        outer.cubicTo(centerEnd + endWidth * 0.7f, y,
-                      centerEnd + endWidth * 0.8f, cy - waveHeight,
-                      rx - endWidth * 0.3f, cy - waveHeight * 0.5f);
-        outer.cubicTo(rx - endWidth * 0.1f, cy - waveHeight * 0.3f,
-                      rx, cy - waveHeight * 0.2f,
-                      rx, cy);
-        outer.cubicTo(rx, cy + waveHeight * 0.2f,
-                      rx - endWidth * 0.1f, cy + waveHeight * 0.3f,
-                      rx - endWidth * 0.3f, cy + waveHeight * 0.5f);
-        outer.cubicTo(centerEnd + endWidth * 0.8f, cy + waveHeight,
-                      centerEnd + endWidth * 0.7f, y + height,
-                      centerEnd + endWidth * 0.5f, y + height);
-        outer.cubicTo(centerEnd + endWidth * 0.3f, y + height,
-                      centerEnd + endWidth * 0.2f, bottomY,
-                      centerEnd, bottomY);
+        // Scale and flip Y axis (HarfBuzz uses bottom-up coordinates)
+        canvas->scale(scale, -scale);
         
-        // Bottom edge (straight)
-        outer.lineTo(centerStart, bottomY);
+        // Center the glyph
+        canvas->translate(-glyph_width / 2.0, 0);
         
-        // Left end ornate waves (mirror of right)
-        float lx = x;  // Left edge
-        outer.cubicTo(centerStart - endWidth * 0.2f, bottomY,
-                      centerStart - endWidth * 0.3f, y + height,
-                      centerStart - endWidth * 0.5f, y + height);
-        outer.cubicTo(centerStart - endWidth * 0.7f, y + height,
-                      centerStart - endWidth * 0.8f, cy + waveHeight,
-                      lx + endWidth * 0.3f, cy + waveHeight * 0.5f);
-        outer.cubicTo(lx + endWidth * 0.1f, cy + waveHeight * 0.3f,
-                      lx, cy + waveHeight * 0.2f,
-                      lx, cy);
-        outer.cubicTo(lx, cy - waveHeight * 0.2f,
-                      lx + endWidth * 0.1f, cy - waveHeight * 0.3f,
-                      lx + endWidth * 0.3f, cy - waveHeight * 0.5f);
-        outer.cubicTo(centerStart - endWidth * 0.8f, cy - waveHeight,
-                      centerStart - endWidth * 0.7f, y,
-                      centerStart - endWidth * 0.5f, y);
-        outer.cubicTo(centerStart - endWidth * 0.3f, y,
-                      centerStart - endWidth * 0.2f, topY,
-                      centerStart, topY);
+        // Render the glyph using the surah header font
+        // The font is a COLOR font, so it will render with embedded colors
+        hb_font_paint_glyph(surah_header_font, glyph, paint_funcs, context, 0, context->foreground);
         
-        // Top edge back to start
-        outer.close();
-        
-        // Draw outer fill
-        canvas->drawPath(outer.detach(), outerPaint);
-        
-        // Build inner white area (slightly inset)
-        float inset = height * 0.08f;
-        SkPathBuilder inner;
-        float innerTopY = topY + inset;
-        float innerBottomY = bottomY - inset;
-        float innerCenterStart = centerStart + inset * 0.5f;
-        float innerCenterEnd = centerEnd - inset * 0.5f;
-        float innerEndWidth = endWidth - inset;
-        float innerWaveHeight = waveHeight * 0.8f;
-        
-        inner.moveTo(innerCenterEnd, innerTopY);
-        
-        // Simplified inner curves (less elaborate)
-        inner.cubicTo(innerCenterEnd + innerEndWidth * 0.3f, innerTopY,
-                      innerCenterEnd + innerEndWidth * 0.5f, y + inset,
-                      innerCenterEnd + innerEndWidth * 0.6f, cy);
-        inner.cubicTo(innerCenterEnd + innerEndWidth * 0.5f, y + height - inset,
-                      innerCenterEnd + innerEndWidth * 0.3f, innerBottomY,
-                      innerCenterEnd, innerBottomY);
-        
-        inner.lineTo(innerCenterStart, innerBottomY);
-        
-        inner.cubicTo(innerCenterStart - innerEndWidth * 0.3f, innerBottomY,
-                      innerCenterStart - innerEndWidth * 0.5f, y + height - inset,
-                      innerCenterStart - innerEndWidth * 0.6f, cy);
-        inner.cubicTo(innerCenterStart - innerEndWidth * 0.5f, y + inset,
-                      innerCenterStart - innerEndWidth * 0.3f, innerTopY,
-                      innerCenterStart, innerTopY);
-        
-        inner.close();
-        
-        // Draw inner fill
-        canvas->drawPath(inner.detach(), innerPaint);
+        // Restore canvas state
+        canvas->restore();
+    }
     }
     
     void parseQuranText() {
@@ -692,15 +687,32 @@ struct QuranRendererImpl {
         // Determine if this is a Fatiha page (special layout)
         bool isFatihaPage = (pageIndex == 0 || pageIndex == 1);
         
-        // Font size and line height calculation - EXACTLY match mushaf-android
-        // Lines 239-242 of mushaf-android/app/src/main/cpp/text-rendering.cpp:
-        //     char_height = (dstInfo.width / 17 ) * 0.9;
-        //     inter_line = dstInfo.height / 15;
-        //     y_start = inter_line * 0.72;
-        //     int x_padding = dstInfo.width / 42.5;
-        int char_height = static_cast<int>((width / 17.0) * 0.9);
-        int inter_line = height / 15;
+        // Font size and line height calculation - CRITICAL FIX for orientation changes
+        // The key insight: we need to constrain char_height by BOTH width and height
+        // to prevent text from growing too large when width increases in landscape.
+        //
+        // Original mushaf-android formula works for portrait-optimized layouts:
+        //     char_height = (width / 17) * 0.9;
+        //     inter_line = height / 15;
+        //
+        // Problem: In landscape, width >> height, so char_height can exceed inter_line,
+        // causing text to overlap. We must ensure char_height respects the available
+        // vertical space (inter_line).
+        
         int x_padding = width / 42.5;
+        int inter_line = height / 15;
+        
+        // Calculate char_height from width as baseline
+        int char_height_from_width = static_cast<int>((width / 17.0) * 0.9);
+        
+        // CRITICAL: Constrain char_height to fit within inter_line spacing
+        // Arabic text needs room for marks above and below the baseline.
+        // Safe ratio: char_height should be at most ~85% of inter_line to prevent overlap
+        // (leaves 15% buffer for diacritical marks extending beyond typical glyph bounds)
+        int max_char_height_from_line_spacing = static_cast<int>(inter_line * 0.85);
+        
+        // Use the smaller of the two to ensure text fits in both dimensions
+        int char_height = std::min(char_height_from_width, max_char_height_from_line_spacing);
         
         // Apply fontScale to char_height if specified
         float clampedScale = std::max(0.5f, std::min(2.0f, fontScale));
