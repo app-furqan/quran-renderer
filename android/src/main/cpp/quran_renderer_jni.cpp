@@ -19,6 +19,7 @@
 
 static QuranRendererHandle g_renderer = nullptr;
 static std::vector<uint8_t> g_fontData;
+static std::vector<uint8_t> g_surahHeaderFontData;
 
 extern "C" {
 
@@ -63,6 +64,28 @@ Java_org_digitalkhatt_quran_renderer_QuranRenderer_nativeInit(
         LOGE("Failed to create renderer");
         g_fontData.clear();
         return JNI_FALSE;
+    }
+
+    // Load surah header font (optional)
+    AAsset *surahHeaderAsset = AAssetManager_open(mgr, "fonts/QCF_SurahHeader_COLOR-Regular.ttf", AASSET_MODE_BUFFER);
+    if (surahHeaderAsset) {
+        off_t headerLength = AAsset_getLength(surahHeaderAsset);
+        g_surahHeaderFontData.resize(headerLength);
+        AAsset_read(surahHeaderAsset, g_surahHeaderFontData.data(), headerLength);
+        AAsset_close(surahHeaderAsset);
+        
+        QuranFontData surahHeaderFontData;
+        surahHeaderFontData.data = g_surahHeaderFontData.data();
+        surahHeaderFontData.size = g_surahHeaderFontData.size();
+        
+        if (quran_renderer_load_surah_header_font(g_renderer, &surahHeaderFontData)) {
+            LOGI("Surah header font loaded successfully");
+        } else {
+            LOGE("Failed to load surah header font");
+            g_surahHeaderFontData.clear();
+        }
+    } else {
+        LOGE("Surah header font not found in assets");
     }
 
     LOGI("Renderer initialized successfully");

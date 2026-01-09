@@ -63,11 +63,20 @@ typedef struct QuranRendererImpl* QuranRendererHandle;
 
 /**
  * Initialize the renderer with font data
- * 
+ *
  * @param fontData Font file data (must remain valid for renderer lifetime)
  * @return Renderer handle, or NULL on failure
  */
 QuranRendererHandle quran_renderer_create(const QuranFontData* fontData);
+
+/**
+ * Load the surah header font (optional, enables decorative surah headers)
+ *
+ * @param renderer Renderer handle
+ * @param fontData Surah header font file data (QCF_SurahHeader_COLOR-Regular.ttf)
+ * @return true on success, false on failure
+ */
+bool quran_renderer_load_surah_header_font(QuranRendererHandle renderer, const QuranFontData* fontData);
 
 /**
  * Destroy the renderer and free resources

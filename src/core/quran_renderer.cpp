@@ -186,18 +186,11 @@ struct QuranRendererImpl {
         
         return true;
     }
-    
     bool loadSurahHeaderFont() {
-        // Load the QCF_SurahHeader_COLOR-Regular.ttf font from assets
-        #ifdef __ANDROID__
-        // On Android, this will be loaded from assets by the JNI layer
-        // For now, we'll skip loading on Android and handle it separately
-        return true;
-        #else
-        // On desktop/iOS, load from assets directory
+        // Load from assets directory (desktop/iOS)
         FILE* fontFile = fopen("assets/QCF_SurahHeader_COLOR-Regular.ttf", "rb");
         if (!fontFile) {
-            // Font file not found - this is not critical, we can fall back to text
+            // Font file not found - not critical, will skip surah headers
             return false;
         }
         
@@ -215,16 +208,17 @@ struct QuranRendererImpl {
         }
         
         surahHeaderFontData = buffer;
-        
+        return loadSurahHeaderFontFromData(surahHeaderFontData, surahHeaderFontSize);
+    }
+    
+    bool loadSurahHeaderFontFromData(const uint8_t* fontData, size_t fontSize) {
         auto blob = hb_blob_create_or_fail(
-            reinterpret_cast<const char*>(surahHeaderFontData),
-            surahHeaderFontSize,
+            reinterpret_cast<const char*>(fontData),
+            fontSize,
             HB_MEMORY_MODE_READONLY,
             nullptr, nullptr
         );
         if (!blob) {
-            delete[] surahHeaderFontData;
-            surahHeaderFontData = nullptr;
             return false;
         }
         
@@ -232,8 +226,6 @@ struct QuranRendererImpl {
         hb_blob_destroy(blob);
         
         if (!surah_header_face) {
-            delete[] surahHeaderFontData;
-            surahHeaderFontData = nullptr;
             return false;
         }
         
@@ -242,7 +234,6 @@ struct QuranRendererImpl {
         hb_font_set_scale(surah_header_font, surah_header_upem, surah_header_upem);
         
         return true;
-        #endif
     }
     
     // Map surah number (1-114) to ligature codepoint
@@ -830,32 +821,14 @@ struct QuranRendererImpl {
         // Determine if this is a Fatiha page (special layout)
         bool isFatihaPage = (pageIndex == 0 || pageIndex == 1);
         
-        // Font size and line height calculation - CRITICAL FIX for orientation changes
-        // The key insight: we need to constrain char_height by BOTH width and height
-        // to prevent text from growing too large when width increases in landscape.
-        //
-        // Original mushaf-android formula works for portrait-optimized layouts:
-        //     char_height = (width / 17) * 0.9;
-        //     inter_line = height / 15;
-        //
-        // Problem: In landscape, width >> height, so char_height can exceed inter_line,
-        // causing text to overlap. We must ensure char_height respects the available
-        // vertical space (inter_line).
+        // Font size and line height calculation
+        // Keep the original mushaf-android formula for char_height (based on width)
+        // But fix inter_line calculation to prevent overlaps in landscape mode
         
         int x_padding = width / 42.5;
-        int inter_line = height / 15;
         
-        // Calculate char_height from width as baseline
-        int char_height_from_width = static_cast<int>((width / 17.0) * 0.9);
-        
-        // CRITICAL: Constrain char_height to fit within inter_line spacing
-        // Arabic text needs room for marks above and below the baseline.
-        // Safe ratio: char_height should be at most ~85% of inter_line to prevent overlap
-        // (leaves 15% buffer for diacritical marks extending beyond typical glyph bounds)
-        int max_char_height_from_line_spacing = static_cast<int>(inter_line * 0.85);
-        
-        // Use the smaller of the two to ensure text fits in both dimensions
-        int char_height = std::min(char_height_from_width, max_char_height_from_line_spacing);
+        // Calculate char_height from width as baseline (original formula)
+        int char_height = static_cast<int>((width / 17.0) * 0.9);
         
         // Apply fontScale to char_height if specified
         float clampedScale = std::max(0.5f, std::min(2.0f, fontScale));
@@ -868,6 +841,18 @@ struct QuranRendererImpl {
         
         // Calculate render scale from char_height
         double renderScale = (double)char_height / upem;
+        
+        // CRITICAL FIX: Calculate optimal inter_line to prevent overlaps
+        // This measures the actual text extents and ensures sufficient spacing
+        int inter_line = calculateOptimalLineHeight(pageIndex, width, height, x_padding, clampedScale);
+        
+        // IMPORTANT: Ensure minimum spacing based on font size to prevent cramping
+        // In landscape mode, height / 15 may be too restrictive
+        // Minimum spacing should be at least 1.2x the char_height to accommodate marks
+        int minLineSpacing = static_cast<int>(char_height * 1.2);
+        if (inter_line < minLineSpacing) {
+            inter_line = minLineSpacing;
+        }
         
         // CRITICAL FIX: Calculate page width dynamically like mushaf-android
         // This ensures text adjusts properly on orientation changes
@@ -935,20 +920,33 @@ struct QuranRendererImpl {
             
             auto& linetext = pageText[lineIndex];
             
-            // Draw surah name frame for Sura lines
-            if (linetext.line_type == LineType::Sura) {
-                canvas->resetMatrix();
-                // Frame dimensions - spans most of the page width
-                float frameWidth = (width - 2 * x_padding) * 0.85f;
-                float frameHeight = inter_line * 0.7f;
-                float frameX = x_padding + (width - 2 * x_padding - frameWidth) / 2;
-                float frameY = y_start + lineIndex * inter_line - inter_line * 0.55f;
+            // Draw surah header using font ligature instead of SVG frame
+            if (linetext.line_type == LineType::Sura && surah_header_font) {
+                // Find which surah this is by checking page metadata
+                int surahNumber = -1;
+                for (int s = 1; s <= 114; s++) {
+                    int startPage = quran_renderer_get_surah_start_page(s);
+                    if (startPage == pageIndex) {
+                        surahNumber = s;
+                        break;
+                    }
+                }
                 
-                drawSurahFrame(canvas.get(), frameX, frameY, frameWidth, frameHeight, backgroundColor);
-                
-                // Reset canvas for text drawing
-                canvas->resetMatrix();
-                canvas->translate(x_start, y_start + lineIndex * inter_line);
+                if (surahNumber > 0) {
+                    canvas->resetMatrix();
+                    // Header dimensions - centered, spans most of the page width
+                    float headerWidth = (width - 2 * x_padding) * 0.8f;
+                    float headerHeight = inter_line * 0.8f;
+                    float headerX = x_padding + (width - 2 * x_padding - headerWidth) / 2;
+                    float headerY = y_start + lineIndex * inter_line - inter_line * 0.6f;
+                    
+                    // Use the surah header font to draw the ligature
+                    drawSurahHeader(canvas.get(), &context, surahNumber,
+                                  headerX, headerY, headerWidth, headerHeight, backgroundColor);
+                    
+                    // Skip rendering the text line - we've already rendered the header
+                    continue;
+                }
             }
             
             canvas->scale(renderScale, -renderScale);
