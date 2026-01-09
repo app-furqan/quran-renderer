@@ -302,7 +302,6 @@ struct QuranRendererImpl {
     }
     
     // Draw a decorative surah name frame
-    // Approximation of ayaframe.svg from DigitalKhatt
     // The original SVG has intricate wave decorations at both ends
     void drawSurahFrame(SkCanvas* canvas, float x, float y, float width, float height, uint32_t backgroundColor) {
         // Determine if dark mode based on background luminance
