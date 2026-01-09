@@ -665,39 +665,45 @@ struct QuranRendererImpl {
         auto& pageText = pages[pageIndex];
         
         // =========================================================================
-        // EXACT MATCH TO DIGITALKHATT/MUSHAF-ANDROID LAYOUT CALCULATIONS
-        // Source: https://github.com/DigitalKhatt/mushaf-android/blob/master/app/src/main/cpp/text-rendering.cpp
+        // ADAPTIVE LAYOUT - Based on DigitalKhatt formulas with orientation support
+        // DigitalKhatt uses fixed aspect ratio (1.618). We adapt to any aspect ratio.
         // =========================================================================
         
-        // char_height = (dstInfo.width / 17) * 0.9;
+        // Font size: Always use DigitalKhatt formula (width / 17) * 0.9
+        // This keeps the font size consistent and large
         int char_height = static_cast<int>((width / 17.0) * 0.9);
         
-        // inter_line = dstInfo.height / 15;
-        int inter_line = height / 15;
+        // Line spacing: Start with DigitalKhatt formula (height / 15)
+        int inter_line_from_height = height / 15;
         
-        // y_start = inter_line * 0.72;
+        // ADAPTIVE: Ensure inter_line is large enough to fit the font without overlaps
+        // Arabic text with diacritics needs ~1.55x char_height for proper spacing
+        // This handles landscape where height-based spacing would be too small
+        int min_inter_line = static_cast<int>(char_height * 1.55);
+        int inter_line = std::max(inter_line_from_height, min_inter_line);
+        
+        // y_start = inter_line * 0.72
         int y_start = static_cast<int>(inter_line * 0.72);
         
-        // x_padding = dstInfo.width / 42.5;
+        // x_padding = width / 42.5
         int x_padding = static_cast<int>(width / 42.5);
         
-        // scale = (double)char_height / upem;
+        // scale = char_height / upem
         double scale = (double)char_height / upem;
         
-        // x_start = dstInfo.width - x_padding;
+        // x_start = width - x_padding
         int x_start = width - x_padding;
         
-        // pageWidth = (dstInfo.width - 2*x_padding) / scale;
+        // pageWidth = (width - 2*x_padding) / scale
         double pageWidth = (width - 2 * x_padding) / scale;
         
         // Special handling for Fatiha pages (page 0 and 1)
-        // if(page_index == 0 || page_index == 1){ y_start = y_start + 3.5 * inter_line; }
         if (pageIndex == 0 || pageIndex == 1) {
             y_start = y_start + static_cast<int>(3.5 * inter_line);
         }
         
         // =========================================================================
-        // END EXACT MATCH - below is rendering logic
+        // END LAYOUT - below is rendering logic
         // =========================================================================
         
         // Compute text color based on background luminance

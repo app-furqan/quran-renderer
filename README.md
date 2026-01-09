@@ -1,5 +1,19 @@
 # Quran Renderer
 
+> ⚠️ **DRAFT STATUS - USE WITH CAUTION**
+>
+> This project is currently in **draft/beta status** and under active development. While functional, it may contain bugs, incomplete features, or unexpected behavior.
+>
+> **Please:**
+> - 🧪 **Test thoroughly** before using in production applications
+> - 📖 **Verify Quran text accuracy** against authoritative sources
+> - 🐛 **Report any issues** you encounter
+> - ⚡ **Do not rely solely** on this renderer for critical religious applications without independent verification
+>
+> The rendering of sacred text requires the utmost accuracy. Use this library intelligently and always cross-reference with authenticated Quran manuscripts.
+
+---
+
 A high-quality, cross-platform Quran text rendering library using the **[DigitalKhatt](https://digitalkhatt.org)** Quran font. Features professional Arabic typography with tajweed coloring and automatic line justification using kashida stretching.
 
 **Supported Platforms:**
