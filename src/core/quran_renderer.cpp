@@ -287,10 +287,9 @@ struct QuranRendererImpl {
         int char_height = static_cast<int>((width / 17.0) * 0.9 * clampedScale);
         double scale = (double)char_height / upem;
         
-        const double referencePageWidth = 17000.0;
-        double actualPageWidth = (width - 2 * x_padding) / scale;
-        double pageWidthRatio = actualPageWidth / referencePageWidth;
-        double pageWidth = referencePageWidth;
+        // Calculate page width dynamically like mushaf-android
+        // This ensures measurement calculations match rendering on all orientations
+        double pageWidth = (width - 2 * x_padding) / scale;
         
         // Measure all lines and find the maximum required spacing
         int maxTotalHeight = 0;
@@ -314,8 +313,7 @@ struct QuranRendererImpl {
         }
         
         // Convert from font units to pixels
-        double renderScale = scale * pageWidthRatio;
-        int maxHeightPixels = static_cast<int>(maxTotalHeight * renderScale);
+        int maxHeightPixels = static_cast<int>(maxTotalHeight * scale);
         
         // Add a tiny buffer (2%) just to prevent pixel-level touching
         int requiredLineHeight = static_cast<int>(maxHeightPixels * 1.02);
@@ -693,30 +691,32 @@ struct QuranRendererImpl {
         
         // Determine if this is a Fatiha page (special layout)
         bool isFatihaPage = (pageIndex == 0 || pageIndex == 1);
-                // Font size and line height calculation - match mushafexactly
-                // mushaf-android: char_height = (width / 17) * 0.9
-                //                inter_line = height / 15
-                //                y_start = inter_line * 0.72
-                //                x_padding = width / 42.5
-                int char_height = static_cast<int>((width / 17.0) * 0.9);
-                int inter_line = height / 15;  // Simple: evenly distribute 15 lines across page height
-                int x_padding = width / 42.5;  // Match mushafpadding
-                
-                // Apply fontScale to char_height if specified
-                float clampedScale = std::max(0.5f, std::min(2.0f, fontScale));
-                char_height = static_cast<int>(char_height * clampedScale);
-                
-                // Override with explicit fontSize if provided
-                if (fontSize > 0) {
-                    char_height = fontSize;
-                }
-                
-                // Calculate render scale from char_height
-                double renderScale = (double)char_height / upem;
-                
-                // Calculate page width in font units (mushafapproach)
-                const double referencePageWidth = 17000.0;
-                const double pageWidth = referencePageWidth;
+        
+        // Font size and line height calculation - match mushaf-android exactly
+        // mushaf-android: char_height = (width / 17) * 0.9
+        //                inter_line = height / 15
+        //                y_start = inter_line * 0.72
+        //                x_padding = width / 42.5
+        int char_height = static_cast<int>((width / 17.0) * 0.9);
+        int inter_line = height / 15;  // Simple: evenly distribute 15 lines across page height
+        int x_padding = width / 42.5;  // Match mushaf padding
+        
+        // Apply fontScale to char_height if specified
+        float clampedScale = std::max(0.5f, std::min(2.0f, fontScale));
+        char_height = static_cast<int>(char_height * clampedScale);
+        
+        // Override with explicit fontSize if provided
+        if (fontSize > 0) {
+            char_height = fontSize;
+        }
+        
+        // Calculate render scale from char_height
+        double renderScale = (double)char_height / upem;
+        
+        // CRITICAL FIX: Calculate page width dynamically like mushaf-android
+        // This ensures text adjusts properly on orientation changes
+        // mushaf-android: double pageWidth = (dstInfo.width - 2*x_padding) / scale;
+        double pageWidth = (width - 2 * x_padding) / renderScale;
         // y_start positions the first line's baseline.
         // Arabic text needs room above the baseline for marks (fatha, damma, shadda, etc.)
         // Following mushaf-android: baseline at ~72% down from line slot top
