@@ -136,7 +136,7 @@ The easiest way to build from source is using the automated build script:
 
 ```bash
 # Clone the repository
-git clone https://github.com/hussainak/quran-renderer.git
+git clone https://github.com/app-furqan/quran-renderer.git
 cd quran-renderer
 
 # Run the automated dependency builder
@@ -165,7 +165,7 @@ Options:
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/hussainak/quran-renderer.git
+   git clone https://github.com/app-furqan/quran-renderer.git
    cd quran-renderer
    ```
 
@@ -205,7 +205,7 @@ Build a shared library (`.so`) for Linux:
 
 ```bash
 # Clone the repository
-git clone https://github.com/hussainak/quran-renderer.git
+git clone https://github.com/app-furqan/quran-renderer.git
 cd quran-renderer
 
 # Run the Linux build script
@@ -258,7 +258,7 @@ Build a complete release package for iOS, macOS, and Android (requires macOS wit
 
 ```bash
 # Clone the repository
-git clone https://github.com/hussainak/quran-renderer.git
+git clone https://github.com/app-furqan/quran-renderer.git
 cd quran-renderer
 
 # Run the release build script
