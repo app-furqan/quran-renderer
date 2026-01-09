@@ -692,32 +692,15 @@ struct QuranRendererImpl {
         // Determine if this is a Fatiha page (special layout)
         bool isFatihaPage = (pageIndex == 0 || pageIndex == 1);
         
-        // Font size and line height calculation - match mushaf-android exactly
-        // mushaf-android: char_height = (width / 17) * 0.9
-        //                inter_line = height / 15
-        //                y_start = inter_line * 0.72
-        //                x_padding = width / 42.5
-        //
-        // CRITICAL: In landscape mode (width > height), the char_height from width can exceed
-        // what inter_line from height can accommodate vertically. mushaf-android handles this by
-        // balancing the two calculations to maintain proper aspect ratio.
-        //
-        // Calculate both dimensions independently
-        int char_height_from_width = static_cast<int>((width / 17.0) * 0.9);
+        // Font size and line height calculation - EXACTLY match mushaf-android
+        // Lines 239-242 of mushaf-android/app/src/main/cpp/text-rendering.cpp:
+        //     char_height = (dstInfo.width / 17 ) * 0.9;
+        //     inter_line = dstInfo.height / 15;
+        //     y_start = inter_line * 0.72;
+        //     int x_padding = dstInfo.width / 42.5;
+        int char_height = static_cast<int>((width / 17.0) * 0.9);
         int inter_line = height / 15;
-        
-        // In landscape, ensure char_height doesn't exceed what inter_line can fit
-        // Arabic text with marks needs ~0.72 of inter_line for baseline positioning
-        // and the glyphs should fit within the remaining space
-        // Using inter_line * 0.90 gives good balance (tighter than 0.85, prevents big gaps)
-        int char_height_from_height = static_cast<int>(inter_line * 0.90);
-        
-        // Use the minimum to balance horizontal and vertical constraints
-        // In portrait: char_height_from_width is smaller (normal case)
-        // In landscape: char_height_from_height is smaller (prevents overlap)
-        int char_height = std::min(char_height_from_width, char_height_from_height);
-        
-        int x_padding = width / 42.5;  // Match mushaf padding
+        int x_padding = width / 42.5;
         
         // Apply fontScale to char_height if specified
         float clampedScale = std::max(0.5f, std::min(2.0f, fontScale));
