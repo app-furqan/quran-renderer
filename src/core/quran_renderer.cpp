@@ -236,15 +236,15 @@ struct QuranRendererImpl {
         return true;
     }
     
-    // Map surah number (1-114) to ligature codepoint
-    int getSurahLigatureCodepoint(int surahNumber) {
-        // Based on the ligature table provided:
-        // surah-1 = U+FC45 (ﱅ), surah-2 = U+FC46 (ﱆ), etc.
-        // The Unicode codepoints are sequential starting from U+FC45
+    // Map surah number (1-114) to glyph index in QCF_SurahHeader font
+    // QCF surah header fonts typically have surah names as glyphs 1-114
+    hb_codepoint_t getSurahGlyphIndex(int surahNumber) {
         if (surahNumber < 1 || surahNumber > 114) {
             return 0;
         }
-        return 0xFC45 + (surahNumber - 1);
+        // QCF SurahHeader font maps surah numbers directly to glyph indices
+        // Surah 1 (Al-Fatiha) = glyph 1, Surah 2 (Al-Baqarah) = glyph 2, etc.
+        return (hb_codepoint_t)surahNumber;
     }
     
     // Structure to hold line extent measurements
@@ -389,13 +389,13 @@ struct QuranRendererImpl {
         // Add a tiny buffer (2%) just to prevent pixel-level touching
         int requiredLineHeight = static_cast<int>(maxHeightPixels * 1.02);
         
-        // CRITICAL: Ensure 15 lines fit within the page height
+        // CRITICAL: Ensure 15 lines fit within the page height with proper margins
         // The layout places lines at: y_start + lineIndex * inter_line
         // where y_start = inter_line * 0.72 (for first line baseline)
         // Last line baseline: 0.72 * inter_line + 14 * inter_line = 14.72 * inter_line
         // Text below baseline needs ~0.28 * inter_line, so max Y ≈ 15 * inter_line
-        // To fit within page: inter_line <= height / 15
-        int maxLineHeight = height / 15;
+        // Add small buffer (1%) to prevent bottom clipping: inter_line <= height / 15.15
+        int maxLineHeight = static_cast<int>(height / 15.15);
         
         // Use the smaller of the required height and max that fits
         return std::min(requiredLineHeight, maxLineHeight);
@@ -408,15 +408,10 @@ struct QuranRendererImpl {
             return;
         }
         
-        // Get the ligature codepoint for this surah
-        int codepoint = getSurahLigatureCodepoint(surahNumber);
-        if (codepoint == 0) {
-            return;
-        }
-        
-        // Get the glyph index for the ligature
-        hb_codepoint_t glyph;
-        if (!hb_font_get_nominal_glyph(surah_header_font, codepoint, &glyph)) {
+        // Get the glyph index for this surah name
+        // QCF_SurahHeader font has surah names at glyph indices 1-114
+        hb_codepoint_t glyph = getSurahGlyphIndex(surahNumber);
+        if (glyph == 0) {
             return;
         }
         
@@ -710,13 +705,10 @@ struct QuranRendererImpl {
                 textWidth = textWidth * ratio;
             }
         } else if (textWidth < lineWidth) {
-            // Only apply space-stretching if gap is significant (>1% of line width).
-            // When kashida justification is active, small gaps are acceptable.
-            double gap = lineWidth - currentLineWidth;
-            if (gap > lineWidth * 0.01 && nbSpaces > 0) {
-                spaceWidth = (lineWidth - textWidth) / (double)nbSpaces;
-                applySpaceWidth = true;
-            }
+            // Match DigitalKhatt/mushaf-android exactly: always apply space stretching
+            // when text is narrower than line width (after kashida justification)
+            spaceWidth = (lineWidth - textWidth) / (double)nbSpaces;
+            applySpaceWidth = true;
         }
         
         if (lineText.just_type == JustType::center) {
@@ -728,6 +720,8 @@ struct QuranRendererImpl {
             auto glyph_index = glyph_info[i].codepoint;
             bool extend = false;
             
+            // CRITICAL: Set font variation coordinates BEFORE any canvas transformations
+            // This ensures glyph shapes are calculated correctly for kashida extension
             if (glyph_info[i].lefttatweel != 0 || glyph_info[i].righttatweel != 0) {
                 extend = true;
                 coords[0] = roundf(glyph_info[i].lefttatweel * 16384.f);
@@ -736,13 +730,17 @@ struct QuranRendererImpl {
                 font->coords = &coords[0];
             }
             
+            // CRITICAL FIX: Move by x_advance first, THEN apply positioning offsets
+            // This matches DigitalKhatt/mushaf-android line 165-184 exactly
+            // The order matters: advance positioning happens in logical space,
+            // then glyph-specific offsets (for marks, etc.) are applied
             if (glyph_info[i].codepoint == spaceCodePoint && lineText.just_type == JustType::just && applySpaceWidth) {
                 canvas->translate(-spaceWidth, 0);
             } else {
                 canvas->translate(-glyph_pos[i].x_advance, 0);
             }
             
-            // Apply glyph offset BEFORE painting (mushaf-android approach)
+            // Apply glyph positioning offset (for vowel marks, etc.)
             canvas->translate(glyph_pos[i].x_offset, glyph_pos[i].y_offset);
             
             // Tajweed color handling:
@@ -775,10 +773,11 @@ struct QuranRendererImpl {
             context->foreground = color;
             hb_font_paint_glyph(font, glyph_index, paint_funcs, context, 0, color);
             
-            // Undo glyph offset AFTER painting (mushaf-android approach)
-            // This ensures offsets don't accumulate incorrectly
+            // CRITICAL: Undo the positioning offset to restore canvas state
+            // This must happen BEFORE resetting font coords
             canvas->translate(-glyph_pos[i].x_offset, -glyph_pos[i].y_offset);
             
+            // Reset font variation coordinates AFTER all transformations complete
             if (extend) {
                 font->num_coords = 0;
                 font->coords = nullptr;
