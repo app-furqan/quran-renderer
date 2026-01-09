@@ -984,6 +984,14 @@ void quran_renderer_destroy(QuranRendererHandle renderer) {
     delete renderer;
 }
 
+bool quran_renderer_load_surah_header_font(QuranRendererHandle renderer, const QuranFontData* fontData) {
+    if (!renderer || !fontData || !fontData->data || fontData->size == 0) {
+        return false;
+    }
+    
+    return renderer->loadSurahHeaderFontFromData(fontData->data, fontData->size);
+}
+
 void quran_renderer_draw_page(
     QuranRendererHandle renderer,
     QuranPixelBuffer* buffer,
