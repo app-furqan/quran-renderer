@@ -247,159 +247,6 @@ struct QuranRendererImpl {
         return (hb_codepoint_t)surahNumber;
     }
     
-    // Structure to hold line extent measurements
-    struct LineExtents {
-        int maxAscent;   // Maximum height above baseline (positive)
-        int maxDescent;  // Maximum depth below baseline (positive)
-        int totalHeight; // maxAscent + maxDescent
-    };
-    
-    // Measure the vertical extents of a single line of text
-    // Returns the max ascent (above baseline) and descent (below baseline) in font units
-    LineExtents measureLineExtents(const std::string& text, double lineWidth, bool justify, bool measureTajweed) {
-        LineExtents extents = {0, 0, 0};
-        
-        hb_buffer_t* buffer = hb_buffer_create();
-        hb_buffer_set_direction(buffer, HB_DIRECTION_RTL);
-        hb_buffer_set_script(buffer, HB_SCRIPT_ARABIC);
-        hb_buffer_set_language(buffer, ar_language);
-        
-        hb_buffer_add_utf8(buffer, text.c_str(), text.size(), 0, text.size());
-        
-        if (justify) {
-            hb_buffer_set_justify(buffer, lineWidth);
-        }
-        
-        // Shape for measurement.
-        // IMPORTANT: when tajweed is enabled, glyph substitutions/marks can change extents,
-        // so measurement must match the actual shaping settings to avoid overlaps.
-        hb_feature_t measureFeatures[1] = {{ HB_TAG('t', 'j', 'w', 'd'), measureTajweed ? 1u : 0u, 0, (unsigned int)-1 }};
-        hb_shape(font, buffer, measureFeatures, 1);
-        
-        unsigned int count;
-        hb_glyph_info_t* glyph_info = hb_buffer_get_glyph_infos(buffer, &count);
-        hb_glyph_position_t* glyph_pos = hb_buffer_get_glyph_positions(buffer, &count);
-        
-        for (unsigned int i = 0; i < count; i++) {
-            hb_glyph_extents_t glyph_extents;
-            if (hb_font_get_glyph_extents(font, glyph_info[i].codepoint, &glyph_extents)) {
-                // y_bearing is the top of the glyph relative to baseline (positive = above)
-                // height is negative (extends downward from y_bearing)
-                int glyphTop = glyph_extents.y_bearing + glyph_pos[i].y_offset;
-                int glyphBottom = glyph_extents.y_bearing + glyph_extents.height + glyph_pos[i].y_offset;
-                
-                // Track maximum extent above baseline (positive values)
-                if (glyphTop > extents.maxAscent) {
-                    extents.maxAscent = glyphTop;
-                }
-                
-                // Track maximum extent below baseline (negative values, convert to positive)
-                if (glyphBottom < 0 && -glyphBottom > extents.maxDescent) {
-                    extents.maxDescent = -glyphBottom;
-                }
-            }
-        }
-        
-        extents.totalHeight = extents.maxAscent + extents.maxDescent;
-        
-        hb_buffer_destroy(buffer);
-        return extents;
-    }
-
-    struct PageExtents {
-        int maxAscent;
-        int maxDescent;
-        int requiredLineHeight; // maxAscent + maxDescent (worst-case across different lines)
-    };
-
-    PageExtents calculatePageExtentsUnits(int pageIndex, double pageWidth, bool justify) {
-        if (pageIndex < 0 || pageIndex >= (int)pages.size()) {
-            return {0, 0, 0};
-        }
-
-        auto& pageText = pages[pageIndex];
-
-        int maxAscent = 0;
-        int maxDescent = 0;
-        for (size_t lineIndex = 0; lineIndex < pageText.size(); lineIndex++) {
-            auto& linetext = pageText[lineIndex];
-
-            double lineWidth = pageWidth;
-            auto specialWidth = lineWidths.find(pageIndex * 15 + lineIndex);
-            if (specialWidth != lineWidths.end()) {
-                lineWidth = pageWidth * specialWidth->second;
-            }
-
-            bool shouldJustify = justify && (linetext.just_type == JustType::just);
-            bool measureTajweed = tajweed && (linetext.line_type != LineType::Sura);
-            LineExtents extents = measureLineExtents(linetext.text, lineWidth, shouldJustify, measureTajweed);
-
-            // NOTE: max ascent and max descent can occur on different lines.
-            // For safe inter-line spacing we need inter_line >= maxAscent + maxDescent.
-            if (extents.maxAscent > maxAscent) maxAscent = extents.maxAscent;
-            if (extents.maxDescent > maxDescent) maxDescent = extents.maxDescent;
-        }
-
-        return {maxAscent, maxDescent, maxAscent + maxDescent};
-    }
-    
-    // Calculate the optimal line height for a page to avoid overlaps
-    // Returns the minimum inter_line spacing needed in pixels
-    int calculateOptimalLineHeight(int pageIndex, int width, int height, int x_padding, float fontScale = 1.0f) {
-        if (pageIndex < 0 || pageIndex >= (int)pages.size()) {
-            return height / 10;  // Default fallback
-        }
-        
-        auto& pageText = pages[pageIndex];
-        bool isFatihaPage = (pageIndex == 0 || pageIndex == 1);
-        
-        // Calculate char_height and scale (same as in drawPage)
-        float clampedScale = std::max(0.5f, std::min(2.0f, fontScale));
-        int char_height = static_cast<int>((width / 17.0) * 0.9 * clampedScale);
-        double scale = (double)char_height / upem;
-        
-        // Calculate page width dynamically like mushaf-android
-        // This ensures measurement calculations match rendering on all orientations
-        double pageWidth = (width - 2 * x_padding) / scale;
-        
-        // Measure all lines and find the maximum required spacing
-        int maxTotalHeight = 0;
-        
-        for (size_t lineIndex = 0; lineIndex < pageText.size(); lineIndex++) {
-            auto& linetext = pageText[lineIndex];
-            
-            // Get line width for this specific line
-            double lineWidth = pageWidth;
-            auto specialWidth = lineWidths.find(pageIndex * 15 + lineIndex);
-            if (specialWidth != lineWidths.end()) {
-                lineWidth = pageWidth * specialWidth->second;
-            }
-            
-            bool shouldJustify = (linetext.just_type == JustType::just);
-            LineExtents extents = measureLineExtents(linetext.text, lineWidth, shouldJustify, false);
-            
-            if (extents.totalHeight > maxTotalHeight) {
-                maxTotalHeight = extents.totalHeight;
-            }
-        }
-        
-        // Convert from font units to pixels
-        int maxHeightPixels = static_cast<int>(maxTotalHeight * scale);
-        
-        // Add a tiny buffer (2%) just to prevent pixel-level touching
-        int requiredLineHeight = static_cast<int>(maxHeightPixels * 1.02);
-        
-        // CRITICAL: Ensure 15 lines fit within the page height with proper margins
-        // The layout places lines at: y_start + lineIndex * inter_line
-        // where y_start = inter_line * 0.72 (for first line baseline)
-        // Last line baseline: 0.72 * inter_line + 14 * inter_line = 14.72 * inter_line
-        // Text below baseline needs ~0.28 * inter_line, so max Y ≈ 15 * inter_line
-        // Add small buffer (1%) to prevent bottom clipping: inter_line <= height / 15.15
-        int maxLineHeight = static_cast<int>(height / 15.15);
-        
-        // Use the smaller of the required height and max that fits
-        return std::min(requiredLineHeight, maxLineHeight);
-    }
     // Draw surah header using font ligature
     void drawSurahHeader(SkCanvas* canvas, skia_context_t* context, int surahNumber,
                         float x, float y, float width, float height, uint32_t backgroundColor) {
@@ -817,77 +664,41 @@ struct QuranRendererImpl {
         
         auto& pageText = pages[pageIndex];
         
-        // Determine if this is a Fatiha page (special layout)
-        bool isFatihaPage = (pageIndex == 0 || pageIndex == 1);
+        // =========================================================================
+        // EXACT MATCH TO DIGITALKHATT/MUSHAF-ANDROID LAYOUT CALCULATIONS
+        // Source: https://github.com/DigitalKhatt/mushaf-android/blob/master/app/src/main/cpp/text-rendering.cpp
+        // =========================================================================
         
-        // Font size and line height calculation
-        // Keep the original mushaf-android formula for char_height (based on width)
-        // But fix inter_line calculation to prevent overlaps in landscape mode
-        
-        int x_padding = width / 42.5;
-        
-        // Calculate char_height from width as baseline (original formula)
+        // char_height = (dstInfo.width / 17) * 0.9;
         int char_height = static_cast<int>((width / 17.0) * 0.9);
         
-        // Apply fontScale to char_height if specified
-        float clampedScale = std::max(0.5f, std::min(2.0f, fontScale));
-        char_height = static_cast<int>(char_height * clampedScale);
+        // inter_line = dstInfo.height / 15;
+        int inter_line = height / 15;
         
-        // Override with explicit fontSize if provided
-        if (fontSize > 0) {
-            char_height = fontSize;
-        }
-        
-        // Calculate render scale from char_height
-        double renderScale = (double)char_height / upem;
-        
-        // CRITICAL FIX: Calculate optimal inter_line to prevent overlaps
-        // This measures the actual text extents and ensures sufficient spacing
-        int inter_line = calculateOptimalLineHeight(pageIndex, width, height, x_padding, clampedScale);
-        
-        // IMPORTANT: Ensure minimum spacing based on font size to prevent cramping
-        // In landscape mode, height / 15 may be too restrictive
-        // Minimum spacing should be at least 1.2x the char_height to accommodate marks
-        int minLineSpacing = static_cast<int>(char_height * 1.2);
-        if (inter_line < minLineSpacing) {
-            inter_line = minLineSpacing;
-        }
-        
-        // CRITICAL FIX: Calculate page width dynamically like mushaf-android
-        // This ensures text adjusts properly on orientation changes
-        // mushaf-android: double pageWidth = (dstInfo.width - 2*x_padding) / scale;
-        double pageWidth = (width - 2 * x_padding) / renderScale;
-        // y_start positions the first line's baseline.
-        // Arabic text needs room above the baseline for marks (fatha, damma, shadda, etc.)
-        // Following mushaf-android: baseline at ~72% down from line slot top
-        // This leaves ~28% of line height for marks above, ~72% for base + marks below
+        // y_start = inter_line * 0.72;
         int y_start = static_cast<int>(inter_line * 0.72);
         
+        // x_padding = dstInfo.width / 42.5;
+        int x_padding = static_cast<int>(width / 42.5);
+        
+        // scale = (double)char_height / upem;
+        double scale = (double)char_height / upem;
+        
+        // x_start = dstInfo.width - x_padding;
         int x_start = width - x_padding;
         
-        // CRITICAL: Use a fixed reference page width for HarfBuzz justification.
-        // HarfBuzz kashida justification and glyph positioning are calculated based on
-        // the target line width in font units. If this varies with font size, the glyph
-        // offsets (x_offset, y_offset) change, causing vowel marks to shift.
-        // 
-        // mushafuses a fixed pageWidth of 17000 units. We calculate the actual
-        // rendering area based on screen dimensions and derive a consistent reference.
-        // The key is that the RATIO of lineWidth to pageWidth stays consistent.
-        // Use reference page width for HarfBuzz justification (consistent glyph positioning)
-        // Render scale is computed above (constrained by width + height).
+        // pageWidth = (dstInfo.width - 2*x_padding) / scale;
+        double pageWidth = (width - 2 * x_padding) / scale;
         
-        // Top margin: user-specified or auto
-        // Auto: 0 for regular pages (start at top), 0 for Fatiha too (removed old 3.5 offset)
-        // User can set topMarginLines to add spacing at top if desired
-        float effectiveTopMargin = topMarginLines;
-        if (effectiveTopMargin < 0.0f) {
-            // Auto mode: no extra top margin - start from the top of the page
-            effectiveTopMargin = 0.0f;
+        // Special handling for Fatiha pages (page 0 and 1)
+        // if(page_index == 0 || page_index == 1){ y_start = y_start + 3.5 * inter_line; }
+        if (pageIndex == 0 || pageIndex == 1) {
+            y_start = y_start + static_cast<int>(3.5 * inter_line);
         }
         
-        if (effectiveTopMargin > 0.0f) {
-            y_start = y_start + static_cast<int>(effectiveTopMargin * inter_line);
-        }
+        // =========================================================================
+        // END EXACT MATCH - below is rendering logic
+        // =========================================================================
         
         // Compute text color based on background luminance
         hb_color_t textColor = getTextColorForBackground(backgroundColor);
@@ -908,11 +719,12 @@ struct QuranRendererImpl {
             
             auto lineWidth = pageWidth;
             
+            // Exact match to DigitalKhatt: special line widths for certain pages/lines
             auto specialWidth = lineWidths.find(pageIndex * 15 + lineIndex);
             if (specialWidth != lineWidths.end()) {
                 lineWidth = pageWidth * specialWidth->second;
                 float xxstart = (pageWidth - lineWidth) / 2;
-                canvas->translate(x_start - xxstart * renderScale, y_start + lineIndex * inter_line);
+                canvas->translate(x_start - xxstart * scale, y_start + lineIndex * inter_line);
             } else {
                 canvas->translate(x_start, y_start + lineIndex * inter_line);
             }
@@ -948,11 +760,12 @@ struct QuranRendererImpl {
                 }
             }
             
-            canvas->scale(renderScale, -renderScale);
+            // Exact match to DigitalKhatt: canvas->scale(scale,-scale);
+            canvas->scale(scale, -scale);
             
             // Disable tajweed coloring for surah name lines - they should be plain text
             bool disableTajweed = (linetext.line_type == LineType::Sura);
-            drawLine(linetext, &context, lineWidth, justify, renderScale, textColor, disableTajweed);
+            drawLine(linetext, &context, lineWidth, justify, scale, textColor, disableTajweed);
         }
     }
     
