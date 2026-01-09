@@ -697,19 +697,25 @@ struct QuranRendererImpl {
         //                inter_line = height / 15
         //                y_start = inter_line * 0.72
         //                x_padding = width / 42.5
-        
-        // CRITICAL FIX for landscape orientation:
-        // Calculate char_height from width, but constrain it by available vertical space
-        // to prevent overlapping lines in landscape mode where width >> height
+        //
+        // CRITICAL: In landscape mode (width > height), the char_height from width can exceed
+        // what inter_line from height can accommodate vertically. mushaf-android handles this by
+        // balancing the two calculations to maintain proper aspect ratio.
+        //
+        // Calculate both dimensions independently
         int char_height_from_width = static_cast<int>((width / 17.0) * 0.9);
-        int inter_line = height / 15;  // Simple: evenly distribute 15 lines across page height
+        int inter_line = height / 15;
         
-        // Maximum char_height that fits vertically: inter_line accounts for both
-        // the glyph body and spacing. Using 0.85 leaves room for marks above/below baseline.
-        int max_char_height_from_height = static_cast<int>(inter_line * 0.85);
+        // In landscape, ensure char_height doesn't exceed what inter_line can fit
+        // Arabic text with marks needs ~0.72 of inter_line for baseline positioning
+        // and the glyphs should fit within the remaining space
+        // Using inter_line * 0.90 gives good balance (tighter than 0.85, prevents big gaps)
+        int char_height_from_height = static_cast<int>(inter_line * 0.90);
         
-        // Use the smaller of the two to ensure text fits in both dimensions
-        int char_height = std::min(char_height_from_width, max_char_height_from_height);
+        // Use the minimum to balance horizontal and vertical constraints
+        // In portrait: char_height_from_width is smaller (normal case)
+        // In landscape: char_height_from_height is smaller (prevents overlap)
+        int char_height = std::min(char_height_from_width, char_height_from_height);
         
         int x_padding = width / 42.5;  // Match mushaf padding
         
