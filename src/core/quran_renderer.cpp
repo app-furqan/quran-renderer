@@ -697,8 +697,20 @@ struct QuranRendererImpl {
         //                inter_line = height / 15
         //                y_start = inter_line * 0.72
         //                x_padding = width / 42.5
-        int char_height = static_cast<int>((width / 17.0) * 0.9);
+        
+        // CRITICAL FIX for landscape orientation:
+        // Calculate char_height from width, but constrain it by available vertical space
+        // to prevent overlapping lines in landscape mode where width >> height
+        int char_height_from_width = static_cast<int>((width / 17.0) * 0.9);
         int inter_line = height / 15;  // Simple: evenly distribute 15 lines across page height
+        
+        // Maximum char_height that fits vertically: inter_line accounts for both
+        // the glyph body and spacing. Using 0.85 leaves room for marks above/below baseline.
+        int max_char_height_from_height = static_cast<int>(inter_line * 0.85);
+        
+        // Use the smaller of the two to ensure text fits in both dimensions
+        int char_height = std::min(char_height_from_width, max_char_height_from_height);
+        
         int x_padding = width / 42.5;  // Match mushaf padding
         
         // Apply fontScale to char_height if specified
