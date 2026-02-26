@@ -131,12 +131,11 @@ hb_skia_push_clip_glyph (hb_paint_funcs_t *pfuncs HB_UNUSED,
     c->path = newPath;
 }
 
-// Check if a color is near-white (within tolerance)
-static bool isNearWhite(hb_color_t color, int tolerance = 10) {
-    int r = hb_color_get_red(color);
-    int g = hb_color_get_green(color);
-    int b = hb_color_get_blue(color);
-    return (r >= 255 - tolerance && g >= 255 - tolerance && b >= 255 - tolerance);
+// Check if a color is white or near-white (used for COLR layer remapping in dark mode)
+static inline bool isNearWhite(hb_color_t color) {
+    return hb_color_get_red(color) > 240 &&
+           hb_color_get_green(color) > 240 &&
+           hb_color_get_blue(color) > 240;
 }
 
 static void
@@ -148,23 +147,18 @@ hb_skia_paint_color (hb_paint_funcs_t *pfuncs HB_UNUSED,
 {
     skia_context_t *c = (skia_context_t *) paint_data;
     
-    // Determine which color to use:
-    // - If use_foreground_override is set (tajweed OFF), always use the foreground color
-    // - If HarfBuzz says use_foreground, use the foreground color
-    // - Otherwise use the embedded font color (for tajweed and COLR glyphs)
+    // Match DigitalKhatt/mushaf-android: use color parameter directly.
+    // HarfBuzz passes the correct color for each COLR layer:
+    //   - use_foreground=true  → color = foreground passed to hb_font_paint_glyph
+    //   - use_foreground=false → color = palette color from the font's CPAL table
     //
-    // Special handling for COLR glyphs (ayah numbers):
-    // - White fills (colorID 1) are remapped to match the canvas background
-    // - This makes the ayah glyph's internal background transparent to the page
-    hb_color_t finalColor;
-    if (c->use_foreground_override || use_foreground) {
-        finalColor = c->foreground;
-    } else if (isNearWhite(color)) {
-        // Remap white COLR fills to the canvas background color
-        // This makes ayah glyphs adapt to dark/light backgrounds
+    // Dark mode fix: COLR glyphs (ayah markers, decorations) have white palette
+    // fills that act as "knockout" on white backgrounds. On dark backgrounds
+    // these white fills become visible. Remap white palette colors to the
+    // background color so knockout layers remain invisible.
+    hb_color_t finalColor = color;
+    if (!use_foreground && isNearWhite(color)) {
         finalColor = c->backgroundColor;
-    } else {
-        finalColor = color;
     }
     
     c->paint->setColor(SkColorSetARGB(

@@ -103,7 +103,7 @@ struct QuranRendererImpl {
     std::unordered_map<int, int> surahNumbers; // Maps page*15+line to surah number
     
     bool tajweed = true;
-    unsigned int tajweedcolorindex = 0xFFFF;
+    unsigned int tajweedcolorindex = 152; // Match DigitalKhatt/mushaf-android hardcoded value
     hb_feature_t features[1];
     int coords[2];
     
@@ -169,17 +169,6 @@ struct QuranRendererImpl {
         
         draw_funcs = hb_skia_draw_get_funcs();
         paint_funcs = hb_skia_paint_get_funcs();
-        
-        // Tajweed color detection:
-        // Check if font has tajweed color support via GPOS lookup count
-        // Fonts with >150 GPOS lookups likely have tajweed-specific lookups starting around index 152
-        // Note: DigitalKhattV2 only has 140 lookups and uses external regex-based tajweed coloring
-        unsigned int gpos_lookup_count = hb_ot_layout_table_get_lookup_count(face, HB_OT_TAG_GPOS);
-        if (gpos_lookup_count > 150) {
-            // Font has embedded tajweed support
-            tajweedcolorindex = 152;
-        }
-        // Otherwise keep default 0xFFFF (disabled, will fall back to base_codepoint check)
         
         // Load surah header font
         loadSurahHeaderFont();
@@ -614,9 +603,8 @@ struct QuranRendererImpl {
                     255
                 );
             }
-            // Update context foreground before painting so COLR use_foreground layers
-            // can access it.
-            context->foreground = color;
+            // Match DigitalKhatt/mushaf-android: pass color directly to hb_font_paint_glyph
+            // Do NOT set context->foreground here - upstream doesn't do this
             hb_font_paint_glyph(font, glyph_index, paint_funcs, context, 0, color);
             
             // CRITICAL: Undo the positioning offset to restore canvas state
@@ -659,7 +647,6 @@ struct QuranRendererImpl {
         context.paint = &paint;
         context.foreground = HB_COLOR(0, 0, 0, 255);
         context.backgroundColor = HB_COLOR(bg_r, bg_g, bg_b, bg_a);
-        context.use_foreground_override = useForeground;
         
         auto& pageText = pages[pageIndex];
         
@@ -668,18 +655,11 @@ struct QuranRendererImpl {
         // DigitalKhatt uses fixed aspect ratio (1.618). We adapt to any aspect ratio.
         // =========================================================================
         
-        // Font size: Always use DigitalKhatt formula (width / 17) * 0.9
-        // This keeps the font size consistent and large
+        // Match DigitalKhatt/mushaf-android exactly:
+        // char_height = (width / 17) * 0.9
+        // inter_line  = height / 15
         int char_height = static_cast<int>((width / 17.0) * 0.9);
-        
-        // Line spacing: Start with DigitalKhatt formula (height / 15)
-        int inter_line_from_height = height / 15;
-        
-        // ADAPTIVE: Ensure inter_line is large enough to fit the font without overlaps
-        // Arabic text with diacritics needs ~1.55x char_height for proper spacing
-        // This handles landscape where height-based spacing would be too small
-        int min_inter_line = static_cast<int>(char_height * 1.55);
-        int inter_line = std::max(inter_line_from_height, min_inter_line);
+        int inter_line = height / 15;
         
         // y_start = inter_line * 0.72
         int y_start = static_cast<int>(inter_line * 0.72);
@@ -735,35 +715,6 @@ struct QuranRendererImpl {
             }
             
             auto& linetext = pageText[lineIndex];
-            
-            // Draw surah header using font ligature instead of SVG frame
-            if (linetext.line_type == LineType::Sura && surah_header_font) {
-                // Find which surah this is by checking page metadata
-                int surahNumber = -1;
-                for (int s = 1; s <= 114; s++) {
-                    int startPage = quran_renderer_get_surah_start_page(s);
-                    if (startPage == pageIndex) {
-                        surahNumber = s;
-                        break;
-                    }
-                }
-                
-                if (surahNumber > 0) {
-                    canvas->resetMatrix();
-                    // Header dimensions - centered, spans most of the page width
-                    float headerWidth = (width - 2 * x_padding) * 0.8f;
-                    float headerHeight = inter_line * 0.8f;
-                    float headerX = x_padding + (width - 2 * x_padding - headerWidth) / 2;
-                    float headerY = y_start + lineIndex * inter_line - inter_line * 0.6f;
-                    
-                    // Use the surah header font to draw the ligature
-                    drawSurahHeader(canvas.get(), &context, surahNumber,
-                                  headerX, headerY, headerWidth, headerHeight, backgroundColor);
-                    
-                    // Skip rendering the text line - we've already rendered the header
-                    continue;
-                }
-            }
             
             // Exact match to DigitalKhatt: canvas->scale(scale,-scale);
             canvas->scale(scale, -scale);
@@ -1028,10 +979,7 @@ int quran_renderer_draw_text(
     hb_color_t hbTextColor = HB_COLOR(txt_r, txt_g, txt_b, 255);
     context.foreground = hbTextColor;
     
-    // Tajweed handling: when tajweed is enabled, allow font colors through (use_foreground_override=false)
-    // When disabled, force all glyphs to use foreground color (use_foreground_override=true)
     bool useTajweed = config ? config->tajweed : true;
-    context.use_foreground_override = !useTajweed;  // false when tajweed enabled = allow font colors
     
     // Create and shape the text
     hb_buffer_t* hbBuffer = hb_buffer_create();
@@ -1058,11 +1006,23 @@ int quran_renderer_draw_text(
     hb_glyph_info_t* glyph_info = hb_buffer_get_glyph_infos(hbBuffer, &count);
     hb_glyph_position_t* glyph_pos = hb_buffer_get_glyph_positions(hbBuffer, &count);
     
-    // Calculate text width
+    const int spaceCodePoint = 3;
+    int textWidth = 0;
     int totalWidth = 0;
-    for (unsigned int i = 0; i < count; i++) {
-        totalWidth += glyph_pos[i].x_advance;
+    int currentLineWidth = 0;
+    int nbSpaces = 0;
+    for (int i = static_cast<int>(count) - 1; i >= 0; --i) {
+        if (glyph_info[i].codepoint == spaceCodePoint) {
+            nbSpaces++;
+        } else {
+            textWidth += glyph_pos[i].x_advance;
+        }
+        currentLineWidth += glyph_pos[i].x_advance;
     }
+    totalWidth = currentLineWidth;
+    
+    bool applySpaceWidth = false;
+    double spaceWidth = 0.0;
     
     // Calculate margins for positioning
     float marginRight = config ? config->marginRight : -1.0f;
@@ -1084,27 +1044,45 @@ int quran_renderer_draw_text(
     canvas->translate(x_start, y_start);
     canvas->scale(scale, -scale);
     
+    // Match mushaf-android drawLine behavior for line fitting and spacing
+    bool changeSize = true;
+    if (currentLineWidth > lineWidth && changeSize) {
+        double ratio = lineWidth / currentLineWidth;
+        canvas->scale(ratio, ratio);
+        currentLineWidth = static_cast<int>(lineWidth);
+        textWidth = static_cast<int>(textWidth * ratio);
+    } else if (textWidth < lineWidth && nbSpaces > 0) {
+        spaceWidth = (lineWidth - textWidth) / static_cast<double>(nbSpaces);
+        applySpaceWidth = true;
+    }
+    
     // Render glyphs
     for (int i = count - 1; i >= 0; i--) {
         auto glyph_index = glyph_info[i].codepoint;
         
         // Handle variable font coordinates for kashida
+        bool extend = false;
         if (glyph_info[i].lefttatweel != 0 || glyph_info[i].righttatweel != 0) {
+            extend = true;
             renderer->coords[0] = roundf(glyph_info[i].lefttatweel * 16384.f);
             renderer->coords[1] = roundf(glyph_info[i].righttatweel * 16384.f);
             renderer->font->num_coords = 2;
             renderer->font->coords = &renderer->coords[0];
         }
         
-        canvas->translate(-glyph_pos[i].x_advance, 0);
+        if (glyph_info[i].codepoint == spaceCodePoint && justify && applySpaceWidth) {
+            canvas->translate(-spaceWidth, 0);
+        } else {
+            canvas->translate(-glyph_pos[i].x_advance, 0);
+        }
         
         // Apply glyph offset BEFORE painting (mushaf-android approach)
         canvas->translate(glyph_pos[i].x_offset, glyph_pos[i].y_offset);
         
-        // Handle tajweed colors: lookup_index >= tajweedcolorindex indicates tajweed lookup was applied
-        hb_color_t glyphColor = hbTextColor;
+        // Match DigitalKhatt/mushaf-android: determine color, pass directly
+        auto color = hbTextColor;
         if (useTajweed && glyph_pos[i].lookup_index >= renderer->tajweedcolorindex) {
-            glyphColor = HB_COLOR(
+            color = HB_COLOR(
                 (glyph_pos[i].base_codepoint >> 8) & 0xff,
                 (glyph_pos[i].base_codepoint >> 16) & 0xff,
                 (glyph_pos[i].base_codepoint >> 24) & 0xff,
@@ -1112,15 +1090,13 @@ int quran_renderer_draw_text(
             );
         }
         
-        // Update context foreground before painting so COLR use_foreground layers can access it
-        context.foreground = glyphColor;
-        hb_font_paint_glyph(renderer->font, glyph_index, renderer->paint_funcs, &context, 0, glyphColor);
+        hb_font_paint_glyph(renderer->font, glyph_index, renderer->paint_funcs, &context, 0, color);
         
         // Undo glyph offset AFTER painting (mushaf-android approach)
         canvas->translate(-glyph_pos[i].x_offset, -glyph_pos[i].y_offset);
         
         // Reset variable font coords
-        if (glyph_info[i].lefttatweel != 0 || glyph_info[i].righttatweel != 0) {
+        if (extend) {
             renderer->font->num_coords = 0;
             renderer->font->coords = nullptr;
         }
