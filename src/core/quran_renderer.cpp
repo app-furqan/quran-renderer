@@ -686,6 +686,16 @@ struct QuranRendererImpl {
             y_start = y_start + static_cast<int>(3.5 * inter_line);
         }
         
+        // Apply extra spacing from config fields (additive on top of defaults)
+        // lineHeightDivisor: adds height/lineHeightDivisor to inter_line (0 = no extra)
+        if (lineHeightDivisor > 0.0f) {
+            inter_line += static_cast<int>(height / lineHeightDivisor);
+        }
+        // topMarginLines: adds N line-heights to y_start (0 = no extra, -1 = auto which is 0)
+        if (topMarginLines > 0.0f) {
+            y_start += static_cast<int>(topMarginLines * inter_line);
+        }
+        
         // =========================================================================
         // END LAYOUT - below is rendering logic
         // =========================================================================
