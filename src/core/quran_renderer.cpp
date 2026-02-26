@@ -596,12 +596,17 @@ struct QuranRendererImpl {
             // Tajweed color check: lookup_index >= tajweedcolorindex indicates a tajweed lookup was applied
             // and base_codepoint contains the RGB color encoded by HarfBuzz during GPOS processing
             if (useTajweed && glyph_pos[i].lookup_index >= tajweedcolorindex) {
-                color = HB_COLOR(
-                    (glyph_pos[i].base_codepoint >> 8) & 0xff,
-                    (glyph_pos[i].base_codepoint >> 16) & 0xff,
-                    (glyph_pos[i].base_codepoint >> 24) & 0xff,
-                    255
-                );
+                uint8_t tj_r = (glyph_pos[i].base_codepoint >> 8) & 0xff;
+                uint8_t tj_g = (glyph_pos[i].base_codepoint >> 16) & 0xff;
+                uint8_t tj_b = (glyph_pos[i].base_codepoint >> 24) & 0xff;
+                // The font encodes black (0,0,0) for regular text that passes through
+                // tajweed GPOS lookups. On dark backgrounds this is invisible.
+                // Substitute defaultTextColor for near-black encoded colors.
+                if (tj_r < 15 && tj_g < 15 && tj_b < 15) {
+                    color = defaultTextColor;
+                } else {
+                    color = HB_COLOR(tj_r, tj_g, tj_b, 255);
+                }
             }
             // Match DigitalKhatt/mushaf-android: pass color directly to hb_font_paint_glyph
             // Do NOT set context->foreground here - upstream doesn't do this
@@ -1079,15 +1084,20 @@ int quran_renderer_draw_text(
         // Apply glyph offset BEFORE painting (mushaf-android approach)
         canvas->translate(glyph_pos[i].x_offset, glyph_pos[i].y_offset);
         
-        // Match DigitalKhatt/mushaf-android: determine color, pass directly
+        // Determine color: default to text color, override with tajweed if applicable
         auto color = hbTextColor;
         if (useTajweed && glyph_pos[i].lookup_index >= renderer->tajweedcolorindex) {
-            color = HB_COLOR(
-                (glyph_pos[i].base_codepoint >> 8) & 0xff,
-                (glyph_pos[i].base_codepoint >> 16) & 0xff,
-                (glyph_pos[i].base_codepoint >> 24) & 0xff,
-                255
-            );
+            uint8_t tj_r = (glyph_pos[i].base_codepoint >> 8) & 0xff;
+            uint8_t tj_g = (glyph_pos[i].base_codepoint >> 16) & 0xff;
+            uint8_t tj_b = (glyph_pos[i].base_codepoint >> 24) & 0xff;
+            // The font encodes black (0,0,0) for regular text that passes through
+            // tajweed GPOS lookups. On dark backgrounds this is invisible.
+            // Substitute hbTextColor for near-black encoded colors.
+            if (tj_r < 15 && tj_g < 15 && tj_b < 15) {
+                color = hbTextColor;
+            } else {
+                color = HB_COLOR(tj_r, tj_g, tj_b, 255);
+            }
         }
         
         hb_font_paint_glyph(renderer->font, glyph_index, renderer->paint_funcs, &context, 0, color);
