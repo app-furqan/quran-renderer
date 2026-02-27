@@ -138,6 +138,13 @@ static inline bool isNearWhite(hb_color_t color) {
            hb_color_get_blue(color) > 240;
 }
 
+// Check if a color is black or near-black (used for COLR layer remapping in dark mode)
+static inline bool isNearBlack(hb_color_t color) {
+    return hb_color_get_red(color) < 15 &&
+           hb_color_get_green(color) < 15 &&
+           hb_color_get_blue(color) < 15;
+}
+
 static void
 hb_skia_paint_color (hb_paint_funcs_t *pfuncs HB_UNUSED,
                       void *paint_data,
@@ -152,13 +159,18 @@ hb_skia_paint_color (hb_paint_funcs_t *pfuncs HB_UNUSED,
     //   - use_foreground=true  → color = foreground passed to hb_font_paint_glyph
     //   - use_foreground=false → color = palette color from the font's CPAL table
     //
-    // Dark mode fix: COLR glyphs (ayah markers, decorations) have white palette
-    // fills that act as "knockout" on white backgrounds. On dark backgrounds
-    // these white fills become visible. Remap white palette colors to the
-    // background color so knockout layers remain invisible.
+    // Dark mode fixes for COLR palette colors (use_foreground=false):
+    //   1. White palette fills (knockout layers on white bg) → remap to background
+    //      color so they remain invisible on dark backgrounds.
+    //   2. Black palette fills (regular text color in CPAL) → remap to foreground
+    //      color so text is visible on dark backgrounds.
     hb_color_t finalColor = color;
-    if (!use_foreground && isNearWhite(color)) {
-        finalColor = c->backgroundColor;
+    if (!use_foreground) {
+        if (isNearWhite(color)) {
+            finalColor = c->backgroundColor;
+        } else if (isNearBlack(color)) {
+            finalColor = c->foreground;
+        }
     }
     
     c->paint->setColor(SkColorSetARGB(
